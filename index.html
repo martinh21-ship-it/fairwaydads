@@ -362,6 +362,30 @@ async function cloudGetRound(id){
   return rows[0]||null;
 }
 
+// ---- pins (shared green locations) ----
+async function cloudGetPins(groupId){
+  return await cloudFetch("/pins?group_id=eq."+groupId+"&select=*");
+}
+async function cloudSavePin(course,hole,lat,lng){
+  // upsert on (group_id,course,hole)
+  await cloudFetch("/pins",{method:"POST",
+    headers:Object.assign({Prefer:"resolution=merge-duplicates"},CLOUD.headers),
+    body:JSON.stringify({group_id:S.cloud.groupId,course,hole,lat,lng,updated_at:new Date().toISOString()})});
+}
+function applyPins(pins){
+  if(!pins)return;
+  pins.forEach(p=>{
+    const c=COURSES[p.course];if(!c)return;
+    const h=c.holes.find(x=>x.n===p.hole);if(!h)return;
+    h.green=[p.lat,p.lng]; h.approx=false;
+  });
+}
+async function loadPins(){
+  if(!S.cloud||!S.cloud.groupId)return;
+  try{ applyPins(await cloudGetPins(S.cloud.groupId)); }catch(e){ console.warn("pins load failed",e); }
+}
+
+
 // ---- map cloud row <-> local round ----
 function roundFromCloud(row){
   return {
@@ -419,9 +443,8 @@ function startSync(){
   stopSync();
   if(!S.cloud||!S.cloud.groupId)return;
   SYNC_TIMER=setInterval(async()=>{
-    // only pull when not mid-tap (cheap heuristic: always pull, merge is safe)
     await cloudPull();
-    // re-render live/board screens to show others' updates
+    if(S.tab==="gps") await loadPins();
     if(S.tab==="play"||S.tab==="board"||S.tab==="home")render();
   },4000);
 }
@@ -743,6 +766,7 @@ async function doJoin(){
     S.meId=null;
     S.gate=null;
     await cloudPull();
+    await loadPins();
     startSync();
     S.tab=S.players.length?"home":"dads";
     render();
@@ -1359,17 +1383,23 @@ function GPSView(){
   loc.onclick=startGps;
   w.appendChild(loc);
 
+  // pin status + single-tap capture
+  const pinCard=el("div","card");
   if(hole.approx){
-    const warn=el("div","card mini muted");
-    warn.innerHTML=`⚠️ This pin is an <b>approximate</b> location. Stand on the green and tap <b>Set pin from here</b> to lock real GPS accuracy. Do this once per hole and your yardages will be spot-on forever after.`;
-    w.appendChild(warn);
+    pinCard.style.borderColor="rgba(232,184,75,.35)";
+    pinCard.innerHTML=`<div class="row between" style="margin-bottom:10px"><span class="eyebrow" style="color:var(--gold)">⚠ Green not set yet</span><span class="mini muted">approx</span></div>
+      <div class="mini muted" style="margin-bottom:12px">Stand on or beside this green and tap once. It saves the location for the <b>whole group</b> — any dad only has to do each green once, ever.</div>`;
+  } else {
+    pinCard.style.borderColor="rgba(52,163,90,.4)";
+    pinCard.innerHTML=`<div class="row between" style="margin-bottom:10px"><span class="eyebrow" style="color:var(--green-400)">✓ Green set</span><span class="mini muted">accurate</span></div>
+      <div class="mini muted" style="margin-bottom:12px">Yardages for this hole are locked in for everyone. Standing on the green again will update it.</div>`;
   }
-  const setpin=el("button","btn btn-gold","🎯 Set pin from my location");
-  setpin.style.marginTop="6px";
+  const setpin=el("button","btn btn-gold",hole.approx?"🎯 Tap here to set this green":"↻ Re-set this green");
   setpin.onclick=()=>setPinHere(hole);
-  w.appendChild(setpin);
+  pinCard.appendChild(setpin);
+  w.appendChild(pinCard);
 
-  const hint=el("div","card mini muted center","Tap anywhere on the map to measure a shot line from your position. Uses a free satellite layer — no Google key needed, works the same in your pocket.");
+  const hint=el("div","card mini muted center","Tap anywhere on the map to measure a shot line from your position. Satellite view uses a free layer — no Google key needed.");
   w.appendChild(hint);
   return w;
 }
@@ -1457,7 +1487,8 @@ function updateYards(){
   const dMid=dist(userPos,mid);
   const yMid=metresToYards(dMid);
   const set=(id,v)=>{const e=document.getElementById(id);if(e)e.textContent=v;};
-  set("yardmid",yMid+' <span style="font-size:18px;color:var(--cream-dim)">yds</span>');
+  const setHTML=(id,v)=>{const e=document.getElementById(id);if(e)e.innerHTML=v;};
+  setHTML("yardmid",yMid+' <span style="font-size:18px;color:var(--cream-dim)">yds</span>');
   set("ymid2",yMid);
   set("yfront",Math.max(0,yMid-18));
   set("yback",yMid+18);
@@ -1484,16 +1515,24 @@ function updateShotCard(latlng){
   document.getElementById("shotdist").textContent=txt;
   document.getElementById("clearshot").onclick=()=>{if(ballMarker)MAP.removeLayer(ballMarker);ballMarker=null;if(lineLayer&&userPos)drawLine();sc.classList.add("hidden");};
 }
-function setPinHere(hole){
-  if(!userPos){toast("Enable GPS first");return;}
+async function setPinHere(hole){
+  if(!userPos){toast("Tap 'Use my location' first");return;}
   hole.green=[...userPos];hole.approx=false;
-  toast("Pin locked 🎯 yardages now accurate");
+  const {courseKey}=currentGpsHole();
+  toast("Green set 🎯 saving for the group…");
+  try{
+    await cloudSavePin(courseKey,hole.n,userPos[0],userPos[1]);
+    toast("Saved — every dad now has this green ✓");
+  }catch(e){
+    toast("Set on your phone (cloud save failed — will retry)");
+  }
   initMap();
+  render();
 }
 
 // =================== BOOT ===================
 render();
-if(S.cloud&&S.cloud.groupId){ cloudPull().then(()=>{startSync();render();}); }
+if(S.cloud&&S.cloud.groupId){ Promise.all([cloudPull(),loadPins()]).then(()=>{startSync();render();}); }
 </script>
 </body>
 </html>
