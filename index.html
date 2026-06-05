@@ -132,6 +132,7 @@ table.sc tr.tot td{border-top:1px solid rgba(255,255,255,.18);font-weight:800;co
 /* score badges */
 .sb{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:8px;font-weight:700}
 .sb.eagle{background:var(--gold);color:#3a2a00}
+.strokemark{position:absolute;top:1px;right:3px;font-size:9px;color:var(--gold);letter-spacing:-1px;line-height:1}
 .sb.birdie{background:var(--clay);color:#fff;border-radius:50%}
 .sb.par{color:var(--cream)}
 .sb.bogey{border:1px solid rgba(255,255,255,.3)}
@@ -611,6 +612,43 @@ function playingHcp(player, round){
   const base = player.hcp;
   const frac = round.holes===9 ? 0.5 : 1;
   return Math.round(base*frac);
+}
+
+// How many strokes does player `pid` get on this hole, in the context of the round's format?
+// - match (2 players): based on the DIFFERENCE vs the opponent (only the higher handicapper gets shots)
+// - team: difference vs the lowest playing-hcp on the opposing team
+// - stroke/skins: the player's own full handicap strokes
+// Returns {shots, context} where context describes who it's relative to (for the badge text).
+function strokeInfo(round, pid, hole){
+  const me=S.players.find(p=>p.id===pid);
+  if(!me)return {shots:0,context:""};
+  const myPh=playingHcp(me,round);
+
+  if(round.format==="match" && round.players.length===2){
+    const oppId=round.players.find(x=>x!==pid);
+    const opp=S.players.find(p=>p.id===oppId);
+    if(!opp)return {shots:strokesOnHole(myPh,hole.si),context:""};
+    const oppPh=playingHcp(opp,round);
+    const diff=myPh-oppPh;
+    if(diff>0){ // I'm the higher handicapper -> I get the difference
+      return {shots:strokesOnHole(diff,hole.si),context:"vs "+opp.name.split(' ')[0]};
+    }
+    return {shots:0,context:"vs "+opp.name.split(' ')[0]}; // lower/equal hcp gets none
+  }
+
+  if(round.format==="team"){
+    const myTeam=(round.teamA||[]).includes(pid)?"A":"B";
+    const oppTeam=myTeam==="A"?(round.teamB||[]):(round.teamA||[]);
+    // lowest playing hcp on opposing team is the benchmark
+    let lowOpp=Infinity;
+    oppTeam.forEach(id=>{const p=S.players.find(x=>x.id===id);if(p)lowOpp=Math.min(lowOpp,playingHcp(p,round));});
+    if(!isFinite(lowOpp))return {shots:strokesOnHole(myPh,hole.si),context:""};
+    const diff=myPh-lowOpp;
+    return {shots:diff>0?strokesOnHole(diff,hole.si):0,context:"team strokes"};
+  }
+
+  // stroke play / skins -> own full strokes
+  return {shots:strokesOnHole(myPh,hole.si),context:""};
 }
 
 function gross(round, pid){
@@ -1218,6 +1256,19 @@ function Play(){
     prog.appendChild(d);
   });
   hc.appendChild(prog);
+
+  // "You get a shot here" badge for the viewer
+  if(S.meId && r.players.includes(S.meId)){
+    const info=strokeInfo(r,S.meId,hole);
+    if(info.shots>0){
+      const badge=el("div","");
+      badge.style.cssText="margin-top:12px;background:rgba(217,169,78,.15);border:1px solid var(--gold);border-radius:12px;padding:9px 13px;display:flex;align-items:center;gap:9px";
+      const dots="🔵".repeat(0); // placeholder, use text
+      badge.innerHTML=`<span style="font-size:18px">${info.shots>1?'⛳⛳':'⛳'}</span>
+        <span style="font-weight:700;color:var(--gold);font-size:14px">You get ${info.shots>1?info.shots+' shots':'a shot'} here${info.context?' <span style="color:var(--cream-dim);font-weight:500">'+info.context+'</span>':''}</span>`;
+      hc.appendChild(badge);
+    }
+  }
   w.appendChild(hc);
 
   // Determine "my card" mode: if I've set who I am and I'm in this round,
@@ -1232,7 +1283,8 @@ function Play(){
     const p=S.players.find(x=>x.id===pid);
     if(!p)return;
     const ph=playingHcp(p,r);
-    const shots=strokesOnHole(ph,hole.si);
+    const info=strokeInfo(r,pid,hole);
+    const shots=info.shots;
     const v=r.scores[pid]?.[hole.n];
     const isMe = !meInRound || pid===S.meId; // interactive if it's me, or no-identity fallback
     const sc=scoreClass(v,hole.par);
@@ -1241,7 +1293,7 @@ function Play(){
     if(pid===S.meId)row.style.borderColor="rgba(200,240,74,.4)";
     row.innerHTML=`<div class="nmblock row">${avatarHTML(p,34)}
       <div><div class="pn">${p.name}${pid===S.meId?' <span class="mini" style="color:var(--lime)">· you</span>':''}</div>
-      <div class="sub">${shots>0?'<span class="dot"></span>'.repeat(shots)+' stroke'+(shots>1?'s':'')+' here':'No strokes'} · net ${v!=null?v-shots:'–'}</div></div></div>`;
+      <div class="sub">${shots>0?'<span style="color:var(--gold)">'+'●'.repeat(shots)+'</span> '+shots+' shot'+(shots>1?'s':''):'No shots'} · net ${v!=null?v-shots:'–'}</div></div></div>`;
 
     if(isMe){
       const stp=el("div","stepper");
@@ -1553,13 +1605,19 @@ function Scorecard(r){
     holes.forEach(h=>{
       const v=r.scores[pid]?.[h.n];
       const sc=scoreClass(v,h.par);
-      row+=`<td>${v!=null?`<span class="sb ${sc}">${v}</span>`:'·'}</td>`;
+      const info=strokeInfo(r,pid,h);
+      const dots=info.shots>0?`<span class="strokemark" title="gets a shot">${'•'.repeat(info.shots)}</span>`:"";
+      row+=`<td style="position:relative">${dots}${v!=null?`<span class="sb ${sc}">${v}</span>`:'·'}</td>`;
     });
     row+=`<td class='par' style="color:var(--cream);font-weight:700">${gross(r,pid)||'–'}</td><td style="color:var(--lime);font-weight:800">${netTotal(r,pid)||'–'}</td>`;
     const tr=el("tr","",row);tb.appendChild(tr);
   });
   t.appendChild(tb);
   wrap.appendChild(t);
+  // legend
+  const legend=el("div","mini muted");legend.style.cssText="margin-top:8px;text-align:center";
+  legend.innerHTML=`<span style="color:var(--gold)">•</span> = gets a shot on that hole${r.format==="match"&&r.players.length===2?" (match: based on handicap difference)":""}`;
+  wrap.appendChild(legend);
   return wrap;
 }
 
