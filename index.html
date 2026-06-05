@@ -271,24 +271,162 @@ try{const k="__fd_test";localStorage.setItem(k,"1");localStorage.removeItem(k);C
 let S = load();
 function load(){
   if(CAN_STORE){
-    try{const raw=localStorage.getItem("fairwayDads");if(raw){const d=JSON.parse(raw);d.tab="home";return d;}}catch(e){}
+    try{const raw=localStorage.getItem("fairwayDads");if(raw){const d=JSON.parse(raw);d.tab="home";d.setup={};d.active=d.active||null;return d;}}catch(e){}
   }
   if(window.__FD) return window.__FD;
   window.__FD = {
-    players:[{id:1,name:"Martin",hcp:14,color:AVATAR_COLORS[0]}],
-    rounds:[], active:null, tab:"home", setup:{}
+    players:[], rounds:[], active:null, tab:"home", setup:{},
+    cloud:null,    // {groupId, code, name}
+    meId:null      // which player am I, on this phone
   };
   return window.__FD;
 }
 function persist(){
-  // strip live green pins back into COURSES is handled separately; save core state
   if(CAN_STORE){
     try{localStorage.setItem("fairwayDads",JSON.stringify({
-      players:S.players, rounds:S.rounds, active:S.active, tab:"home", setup:{}
+      players:S.players, rounds:S.rounds, active:S.active, tab:"home", setup:{},
+      cloud:S.cloud, meId:S.meId
     }));}catch(e){}
   }
 }
 function save(){ persist(); render(); }
+
+// =================== CLOUD BACKEND ===================
+const CLOUD = {
+  url:"https://ovurkxdikebjbgisvnpf.supabase.co/rest/v1",
+  key:"sb_publishable_put88WxRdrZFyfLGo26UYg_0hxa04Uv",
+  get headers(){return {apikey:this.key,Authorization:"Bearer "+this.key,"Content-Type":"application/json"};}
+};
+let CLOUD_OK=false, SYNC_TIMER=null, PUSH_TIMER=null, LAST_PULL=0;
+
+async function cloudFetch(path,opts={}){
+  const o=Object.assign({headers:CLOUD.headers},opts);
+  if(o.headers&&!o.headers.apikey)o.headers=Object.assign({},CLOUD.headers,o.headers);
+  const r=await fetch(CLOUD.url+path,o);
+  if(!r.ok){const t=await r.text();throw new Error("HTTP "+r.status+" "+t);}
+  const txt=await r.text();
+  return txt?JSON.parse(txt):null;
+}
+
+// ---- group create / join ----
+function normCode(c){return (c||"").trim().toUpperCase().replace(/[^A-Z0-9]/g,"");}
+async function cloudCreateGroup(code,groupName){
+  code=normCode(code);
+  const rows=await cloudFetch("/groups",{method:"POST",
+    headers:Object.assign({Prefer:"return=representation"},CLOUD.headers),
+    body:JSON.stringify({code,name:groupName||"Fairway Dads"})});
+  return rows[0];
+}
+async function cloudFindGroup(code){
+  code=normCode(code);
+  const rows=await cloudFetch("/groups?code=eq."+code+"&select=*");
+  return rows[0]||null;
+}
+async function cloudAddPlayer(groupId,p){
+  const rows=await cloudFetch("/players",{method:"POST",
+    headers:Object.assign({Prefer:"return=representation"},CLOUD.headers),
+    body:JSON.stringify({group_id:groupId,name:p.name,hcp:p.hcp,color:p.color})});
+  return rows[0];
+}
+async function cloudUpdatePlayer(p){
+  await cloudFetch("/players?id=eq."+p.id,{method:"PATCH",
+    body:JSON.stringify({name:p.name,hcp:p.hcp,color:p.color})});
+}
+async function cloudDeletePlayer(id){
+  await cloudFetch("/players?id=eq."+id,{method:"DELETE"});
+}
+async function cloudGetPlayers(groupId){
+  return await cloudFetch("/players?group_id=eq."+groupId+"&select=*&order=created_at.asc");
+}
+
+// ---- rounds ----
+async function cloudCreateRound(r){
+  const body={group_id:S.cloud.groupId,course:r.course,holes:r.holes,nine:r.nine,
+    format:r.format,player_ids:r.players,team_a:r.teamA,team_b:r.teamB,
+    scores:r.scores,status:"live"};
+  const rows=await cloudFetch("/rounds",{method:"POST",
+    headers:Object.assign({Prefer:"return=representation"},CLOUD.headers),
+    body:JSON.stringify(body)});
+  return rows[0];
+}
+async function cloudUpdateRound(r){
+  await cloudFetch("/rounds?id=eq."+r.cloudId,{method:"PATCH",
+    body:JSON.stringify({scores:r.scores,status:r.done?"done":"live",
+      summary:r.summary||null})});
+}
+async function cloudGetRounds(groupId){
+  return await cloudFetch("/rounds?group_id=eq."+groupId+"&select=*&order=created_at.desc");
+}
+async function cloudGetRound(id){
+  const rows=await cloudFetch("/rounds?id=eq."+id+"&select=*");
+  return rows[0]||null;
+}
+
+// ---- map cloud row <-> local round ----
+function roundFromCloud(row){
+  return {
+    id:row.id, cloudId:row.id, date:new Date(row.created_at).getTime(),
+    course:row.course, holes:row.holes, nine:row.nine, format:row.format,
+    players:row.player_ids||[], teamA:row.team_a||[], teamB:row.team_b||[],
+    scores:row.scores||{}, current:0,
+    done:row.status==="done", summary:row.summary||null, banter:[],
+    _updated:row.updated_at
+  };
+}
+
+// ---- sync: pull group state (players + rounds) ----
+async function cloudPull(){
+  if(!S.cloud||!S.cloud.groupId)return;
+  try{
+    const [players,rounds]=await Promise.all([
+      cloudGetPlayers(S.cloud.groupId),
+      cloudGetRounds(S.cloud.groupId)
+    ]);
+    // players: cloud is source of truth
+    S.players=players.map(p=>({id:p.id,name:p.name,hcp:Number(p.hcp),color:p.color}));
+    // rounds
+    const cloudRounds=rounds.map(roundFromCloud);
+    const live=cloudRounds.find(r=>!r.done);
+    const finished=cloudRounds.filter(r=>r.done).reverse();
+    // don't clobber a round I'm actively editing locally unless cloud is newer
+    if(S.active&&live&&S.active.cloudId===live.cloudId){
+      if(new Date(live._updated)>new Date(S.active._updated||0)){
+        // merge remote scores in (other dads' entries) but keep my hole position
+        const cur=S.active.current;
+        S.active=Object.assign(S.active,live,{current:cur});
+      }
+    } else if(!S.active && live){
+      S.active=live;
+    }
+    S.rounds=finished;
+    CLOUD_OK=true;
+    LAST_PULL=Date.now();
+  }catch(e){ console.warn("pull failed",e); }
+}
+
+// debounced push of the active round's scores
+function cloudPushSoon(){
+  if(!S.cloud||!S.active||!S.active.cloudId)return;
+  S.active._updated=new Date().toISOString();
+  clearTimeout(PUSH_TIMER);
+  PUSH_TIMER=setTimeout(async()=>{
+    try{ await cloudUpdateRound(S.active); CLOUD_OK=true; }
+    catch(e){ console.warn("push failed",e); }
+  },600);
+}
+
+function startSync(){
+  stopSync();
+  if(!S.cloud||!S.cloud.groupId)return;
+  SYNC_TIMER=setInterval(async()=>{
+    // only pull when not mid-tap (cheap heuristic: always pull, merge is safe)
+    await cloudPull();
+    // re-render live/board screens to show others' updates
+    if(S.tab==="play"||S.tab==="board"||S.tab==="home")render();
+  },4000);
+}
+function stopSync(){ if(SYNC_TIMER)clearInterval(SYNC_TIMER); SYNC_TIMER=null; }
+
 
 // =================== HELPERS ===================
 const $=(s,r=document)=>r.querySelector(s);
@@ -445,6 +583,14 @@ function render(){
   const app=$("#app");
   try{
     app.innerHTML="";
+    // Not in a group yet -> show the gate (no nav)
+    if(!S.cloud||!S.cloud.groupId){
+      app.appendChild(Topbar());
+      const gv=el("div","view");
+      gv.appendChild(Gate());
+      app.appendChild(gv);
+      return;
+    }
     app.appendChild(Topbar());
     const v=el("div","view");
     if(S.tab==="home") v.appendChild(Home());
@@ -506,7 +652,105 @@ function Nav(){
   return n;
 }
 
-// ---------- HOME ----------
+// ---------- GATE (create / join group) ----------
+function Gate(){
+  const w=el("div");
+  const hero=el("div","card");
+  hero.style.background="linear-gradient(150deg, var(--green-600), var(--green-700))";
+  hero.innerHTML=`<div class="eyebrow">Welcome to the clubhouse</div>
+    <div class="display" style="font-size:32px;color:var(--cream);margin:6px 0 8px">Get the <em style="color:var(--lime);font-style:italic" class="serif">dads</em> together</div>
+    <div class="muted mini">Create a group and share the code, or join with a code a mate gave you. Everyone with the code sees the same games, scores and leaderboard.</div>`;
+  w.appendChild(hero);
+
+  if(!S.gate)S.gate={mode:"choose",code:"",name:"",busy:false,err:""};
+  const g=S.gate;
+
+  if(g.busy){
+    w.appendChild(el("div","card center",`<div class="empty"><div class="ico">⛳</div>Connecting…</div>`));
+    return w;
+  }
+
+  if(g.mode==="choose"){
+    const create=el("button","btn btn-primary","➕  Create a new group");
+    create.onclick=()=>{g.mode="create";render();};
+    const join=el("button","btn btn-ghost","🔑  Join with a code");
+    join.style.marginTop="10px";
+    join.onclick=()=>{g.mode="join";render();};
+    w.appendChild(create);w.appendChild(join);
+  }
+
+  if(g.mode==="create"){
+    const c=el("div","card");
+    c.innerHTML=`<label>Group name</label>`;
+    const nm=el("input");nm.placeholder="e.g. The Hilton Park Hackers";nm.value=g.name;
+    nm.oninput=e=>g.name=e.target.value;
+    c.appendChild(nm);
+    c.appendChild(el("label","",`Choose a join code`));
+    const cd=el("input");cd.placeholder="e.g. HILTON25";cd.value=g.code;cd.style.textTransform="uppercase";
+    cd.oninput=e=>g.code=e.target.value.toUpperCase();
+    c.appendChild(cd);
+    c.appendChild(el("div","mini muted","Keep it memorable but not obvious — anyone with the code can join. You'll share this with the dads."));
+    if(g.err)c.appendChild(el("div","mini",`<span style="color:var(--clay)">${g.err}</span>`));
+    w.appendChild(c);
+    const go=el("button","btn btn-primary","Create group");
+    go.onclick=()=>doCreate();
+    const back=el("button","del","◂ Back");back.onclick=()=>{g.mode="choose";g.err="";render();};
+    w.appendChild(go);w.appendChild(back);
+  }
+
+  if(g.mode==="join"){
+    const c=el("div","card");
+    c.innerHTML=`<label>Enter the group code</label>`;
+    const cd=el("input");cd.placeholder="e.g. HILTON25";cd.value=g.code;cd.style.textTransform="uppercase";
+    cd.oninput=e=>g.code=e.target.value.toUpperCase();
+    c.appendChild(cd);
+    if(g.err)c.appendChild(el("div","mini",`<span style="color:var(--clay)">${g.err}</span>`));
+    w.appendChild(c);
+    const go=el("button","btn btn-primary","Join group");
+    go.onclick=()=>doJoin();
+    const back=el("button","del","◂ Back");back.onclick=()=>{g.mode="choose";g.err="";render();};
+    w.appendChild(go);w.appendChild(back);
+  }
+  return w;
+}
+
+async function doCreate(){
+  const g=S.gate;
+  const code=normCode(g.code);
+  if(code.length<4){g.err="Code needs at least 4 letters/numbers.";return render();}
+  g.busy=true;g.err="";render();
+  try{
+    const existing=await cloudFindGroup(code);
+    if(existing){g.busy=false;g.err="That code's taken — pick another.";return render();}
+    const grp=await cloudCreateGroup(code,g.name);
+    S.cloud={groupId:grp.id,code:grp.code,name:grp.name};
+    S.players=[];S.rounds=[];S.active=null;S.meId=null;
+    S.gate=null;S.tab="dads";  // send to add dads first
+    startSync();
+    render();
+    toast("Group created 🎉 code: "+grp.code);
+  }catch(e){g.busy=false;g.err="Couldn't create group. "+(e.message||"");render();}
+}
+async function doJoin(){
+  const g=S.gate;
+  const code=normCode(g.code);
+  if(code.length<4){g.err="Enter the full code.";return render();}
+  g.busy=true;g.err="";render();
+  try{
+    const grp=await cloudFindGroup(code);
+    if(!grp){g.busy=false;g.err="No group with that code. Check with whoever set it up.";return render();}
+    S.cloud={groupId:grp.id,code:grp.code,name:grp.name};
+    S.meId=null;
+    S.gate=null;
+    await cloudPull();
+    startSync();
+    S.tab=S.players.length?"home":"dads";
+    render();
+    toast("Joined "+grp.name+" 👋");
+  }catch(e){g.busy=false;g.err="Couldn't join. "+(e.message||"");render();}
+}
+
+
 function Home(){
   const w=el("div");
   // hero
@@ -567,12 +811,43 @@ function fmtFormat(f){return {stroke:"Stroke Play",match:"Match Play",team:"Team
 function Dads(){
   const w=el("div");
   w.appendChild(el("div","",`<div class="eyebrow">The crew</div><div class="bigtitle">The <em>Dads</em></div>`));
+
+  // group code banner
+  if(S.cloud){
+    const gc=el("div","card");gc.style.background="rgba(200,240,74,.08)";gc.style.borderColor="rgba(200,240,74,.25)";
+    gc.innerHTML=`<div class="row between"><div><div class="eyebrow">Group code</div>
+      <div class="serif" style="font-size:24px;color:var(--lime);letter-spacing:.05em">${S.cloud.code}</div></div></div>`;
+    const share=el("button","btn btn-ghost btn-sm","📤 Share code with the dads");share.style.cssText="width:100%;margin-top:10px";
+    share.onclick=()=>{
+      const msg=`Join our golf group "${S.cloud.name}" on Fairway Dads — use code ${S.cloud.code}`;
+      if(navigator.share)navigator.share({text:msg}).catch(()=>{});
+      else{navigator.clipboard?.writeText(msg);toast("Copied — paste into the group chat");}
+    };
+    gc.appendChild(share);
+    w.appendChild(gc);
+  }
+
+  // identity: who am I on this phone?
+  if(S.players.length){
+    const idc=el("div","card");
+    idc.innerHTML=`<label>I am…</label>`;
+    const wrap=el("div","chips");
+    S.players.forEach(p=>{
+      const ch=el("div","chip"+(S.meId===p.id?" on":""),p.name.split(' ')[0]);
+      ch.onclick=()=>{S.meId=p.id;save();toast("You're set as "+p.name.split(' ')[0]);};
+      wrap.appendChild(ch);
+    });
+    idc.appendChild(wrap);
+    idc.appendChild(el("div","mini muted","Pick yourself so the app knows whose phone this is. Each dad does this once on their own phone."));
+    w.appendChild(idc);
+  }
+
   S.players.forEach(p=>{
     const c=el("div","card tight");
     c.innerHTML=`<div class="row">
       <div class="av" style="background:${p.color};width:46px;height:46px;font-size:17px">${initials(p.name)}</div>
       <div style="flex:1">
-        <div style="font-weight:700;font-size:17px">${p.name}</div>
+        <div style="font-weight:700;font-size:17px">${p.name}${S.meId===p.id?' <span class="mini" style="color:var(--lime)">· you</span>':''}</div>
         <div class="muted mini">Handicap ${p.hcp}</div>
       </div></div>`;
     const edit=el("div","row","");edit.style.marginTop="12px";edit.style.gap="8px";
@@ -580,27 +855,37 @@ function Dads(){
     const hcpI=el("input");hcpI.type="number";hcpI.value=p.hcp;hcpI.style.flex="1";hcpI.min="-5";hcpI.max="54";
     nameI.oninput=e=>{p.name=e.target.value;};
     hcpI.oninput=e=>{p.hcp=parseInt(e.target.value)||0;};
-    nameI.onblur=save;hcpI.onblur=save;
+    nameI.onblur=()=>{cloudUpdatePlayer(p).catch(()=>{});save();};
+    hcpI.onblur=()=>{cloudUpdatePlayer(p).catch(()=>{});save();};
     edit.appendChild(nameI);edit.appendChild(hcpI);
     c.appendChild(edit);
-    if(S.players.length>1){
-      const d=el("button","del","Remove dad");
-      d.onclick=()=>{if(confirm(`Remove ${p.name}?`)){S.players=S.players.filter(x=>x.id!==p.id);save();}};
-      c.appendChild(d);
-    }
+    const d=el("button","del","Remove dad");
+    d.onclick=()=>{if(confirm(`Remove ${p.name}?`)){
+      cloudDeletePlayer(p.id).catch(()=>{});
+      S.players=S.players.filter(x=>x.id!==p.id);
+      if(S.meId===p.id)S.meId=null;
+      save();
+    }};
+    c.appendChild(d);
     w.appendChild(c);
   });
+
   const add=el("button","btn btn-primary","＋ Add a dad");
-  add.onclick=()=>{
+  add.onclick=async()=>{
     const used=S.players.map(p=>p.color);
     const col=AVATAR_COLORS.find(c=>!used.includes(c))||AVATAR_COLORS[S.players.length%AVATAR_COLORS.length];
-    S.players.push({id:uid(),name:"New Dad",hcp:18,color:col});
-    save();
+    const tmp={name:"New Dad",hcp:18,color:col};
+    try{
+      const saved=await cloudAddPlayer(S.cloud.groupId,tmp);
+      S.players.push({id:saved.id,name:saved.name,hcp:Number(saved.hcp),color:saved.color});
+      save();
+    }catch(e){toast("Couldn't add — check connection");}
   };
   w.appendChild(add);
-  w.appendChild(el("div","card mini muted center",`Handicaps drive every net score, match-play stroke and skin. Keep them honest — the committee is watching. 👀`));
+  w.appendChild(el("div","card mini muted center",`Add every dad here once — they sync to everyone. Handicaps drive every net score, match-play stroke and skin. 👀`));
   return w;
 }
+
 
 // ---------- SETUP ROUND ----------
 function SetupRound(){
@@ -707,21 +992,31 @@ function formatHint(f){
   }[f];
 }
 
-function startRound(){
+async function startRound(){
   const st=S.setup;
   if(st.players.length<1){toast("Pick at least one player");return;}
   if(st.format==="match"&&st.players.length<2){toast("Match play needs 2 players");return;}
   if(st.format==="team"&&(st.teamA.length<1||st.teamB.length<1)){toast("Set both teams");return;}
-  S.active={
+  const r={
     id:uid(),date:Date.now(),
     course:st.course,holes:st.holes,nine:st.nine,format:st.format,
     players:[...st.players],teamA:[...st.teamA],teamB:[...st.teamB],
     scores:{},current:0,banter:[]
   };
-  st.players.forEach(p=>S.active.scores[p]={});
+  st.players.forEach(p=>r.scores[p]={});
+  S.active=r;
   S.setup={};
   S.tab="play";render();
-  toast("Good luck, dads 🍀");
+  // create in cloud
+  try{
+    const row=await cloudCreateRound(r);
+    S.active.cloudId=row.id;
+    S.active._updated=row.updated_at;
+    persist();
+    toast("Good luck, dads 🍀 everyone can join this game");
+  }catch(e){
+    toast("Started offline — will sync when connected");
+  }
 }
 
 // ---------- PLAY (live scoring) ----------
@@ -772,8 +1067,8 @@ function Play(){
     const val=el("div","val",v!=null?v:"–");
     if(sc){val.style.color=sc==='eagle'?'var(--gold)':sc==='birdie'?'var(--clay)':sc==='dbl'?'var(--clay)':'var(--cream)';}
     const plus=el("button","","＋");
-    minus.onclick=()=>{const cur=r.scores[pid][hole.n]||hole.par;const nx=Math.max(1,cur-1);r.scores[pid][hole.n]=nx;maybeBanter(r,hole);render();};
-    plus.onclick=()=>{const cur=r.scores[pid][hole.n]||(hole.par-1);r.scores[pid][hole.n]=cur+1;maybeBanter(r,hole);render();};
+    minus.onclick=()=>{const cur=r.scores[pid][hole.n]||hole.par;const nx=Math.max(1,cur-1);r.scores[pid][hole.n]=nx;maybeBanter(r,hole);cloudPushSoon();render();};
+    plus.onclick=()=>{const cur=r.scores[pid][hole.n]||(hole.par-1);r.scores[pid][hole.n]=cur+1;maybeBanter(r,hole);cloudPushSoon();render();};
     stp.appendChild(minus);stp.appendChild(val);stp.appendChild(plus);
     row.appendChild(stp);
     w.appendChild(row);
@@ -898,12 +1193,15 @@ function Scorecard(r){
 }
 
 // ---------- FINISH ----------
-function finishRound(){
+async function finishRound(){
   const r=S.active;
-  // compute result summary + winner
   r.summary=computeSummary(r);
   r.done=true;
-  S.rounds.push(r);
+  // push final state to cloud
+  if(r.cloudId){
+    try{ await cloudUpdateRound(r); }catch(e){ console.warn("finish push failed",e); }
+  }
+  S.rounds.unshift(r);
   S.active=null;
   S.tab="board";
   S.justFinished=r.id;
@@ -1195,6 +1493,7 @@ function setPinHere(hole){
 
 // =================== BOOT ===================
 render();
+if(S.cloud&&S.cloud.groupId){ cloudPull().then(()=>{startSync();render();}); }
 </script>
 </body>
 </html>
