@@ -6,23 +6,27 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="theme-color" content="#0a2818">
-<title>Fairway Dads</title>
+<meta name="theme-color" content="#0a1410">
+<title>Tee Escape</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700;9..144,900&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,900;1,9..144,500&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
 :root{
-  --green-900:#06180f; --green-800:#0a2818; --green-700:#0f3622;
-  --green-600:#16512f; --green-500:#1f7a42; --green-400:#34a35a;
-  --lime:#c8f04a; --lime-dim:#9bc234;
-  --cream:#f5f0e1; --cream-dim:#d8d2bf;
-  --gold:#e8b84b; --clay:#c2643c; --sky:#7fc3d6;
-  --ink:#0b140f; --paper:#fbf8ef;
-  --shadow:0 10px 40px -12px rgba(0,0,0,.55);
-  --r:18px;
+  /* Tee Escape — deep forest green, brass/gold, cream */
+  --green-900:#0a1410; --green-800:#0e1c15; --green-700:#13271c;
+  --green-600:#1a3525; --green-500:#26492f; --green-400:#3c6b43;
+  /* gold is now the hero accent (was lime) */
+  --gold:#d9a94e; --gold-bright:#e8c06a; --gold-dim:#b08838;
+  --cream:#f3ede0; --cream-dim:#bdb6a4;
+  --clay:#c2643c; --sky:#8bb6a6;
+  /* keep --lime as an alias to gold so existing references restyle automatically */
+  --lime:#d9a94e; --lime-dim:#b08838;
+  --ink:#0a1410; --paper:#f3ede0;
+  --shadow:0 14px 44px -14px rgba(0,0,0,.7);
+  --r:16px;
 }
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{height:100%}
@@ -38,20 +42,21 @@ body{
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
 
 /* Typography */
-.display{font-family:'Fraunces',serif;font-weight:900;letter-spacing:-.02em;line-height:.95}
+.display{font-family:'Oswald',sans-serif;font-weight:700;letter-spacing:.01em;line-height:.98;text-transform:uppercase}
 .serif{font-family:'Fraunces',serif}
-h1,h2,h3{font-family:'Fraunces',serif;font-weight:700;letter-spacing:-.01em}
+.cond{font-family:'Oswald',sans-serif;text-transform:uppercase;letter-spacing:.04em}
+h1,h2,h3{font-family:'Oswald',sans-serif;font-weight:600;letter-spacing:.02em}
 
 /* Header */
 .topbar{position:sticky;top:0;z-index:50;padding:16px 18px 14px;
-  background:linear-gradient(180deg, var(--green-800) 60%, transparent);
+  background:linear-gradient(180deg, var(--green-800) 65%, transparent);
   display:flex;align-items:center;justify-content:space-between;
   padding-top:calc(16px + env(safe-area-inset-top))}
-.brand{display:flex;align-items:center;gap:10px}
-.brand .flag{width:30px;height:30px;flex:none}
-.brand h1{font-size:21px;color:var(--cream)}
-.brand h1 span{color:var(--lime)}
-.brand-sub{font-size:10px;letter-spacing:.22em;text-transform:uppercase;color:var(--lime-dim);font-weight:600;margin-top:-2px}
+.brand{display:flex;align-items:center;gap:11px}
+.brand .flag{width:34px;height:34px;flex:none}
+.brand h1{font-size:23px;color:var(--cream);font-family:'Oswald',sans-serif;font-weight:700;text-transform:uppercase;letter-spacing:.06em;line-height:1}
+.brand h1 span{color:var(--gold)}
+.brand-sub{font-size:9px;letter-spacing:.28em;text-transform:uppercase;color:var(--gold-dim);font-weight:600;margin-top:2px}
 
 .view{padding:6px 18px 0;animation:fade .4s ease}
 @keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
@@ -67,7 +72,7 @@ h1,h2,h3{font-family:'Fraunces',serif;font-weight:700;letter-spacing:-.01em}
   padding:15px 18px;width:100%;cursor:pointer;transition:transform .12s, filter .2s;
   display:flex;align-items:center;justify-content:center;gap:9px}
 .btn:active{transform:scale(.97)}
-.btn-primary{background:linear-gradient(135deg,var(--lime),var(--lime-dim));color:var(--green-900)}
+.btn-primary{background:linear-gradient(135deg,var(--gold-bright),var(--gold-dim));color:var(--green-900)}
 .btn-ghost{background:rgba(255,255,255,.06);color:var(--cream);border:1px solid rgba(255,255,255,.12)}
 .btn-gold{background:linear-gradient(135deg,var(--gold),#c99a32);color:var(--green-900)}
 .btn-sm{padding:10px 14px;font-size:14px;width:auto;border-radius:11px}
@@ -82,9 +87,9 @@ label{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--c
 .field{margin-bottom:13px}
 
 /* Section label */
-.eyebrow{font-size:11px;letter-spacing:.24em;text-transform:uppercase;color:var(--lime-dim);font-weight:700;margin-bottom:4px}
-.bigtitle{font-size:30px;color:var(--cream);margin-bottom:14px}
-.bigtitle em{font-style:italic;color:var(--lime)}
+.eyebrow{font-family:'Oswald',sans-serif;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--gold-dim);font-weight:600;margin-bottom:4px}
+.bigtitle{font-family:'Oswald',sans-serif;font-weight:700;text-transform:uppercase;letter-spacing:.02em;font-size:32px;color:var(--cream);margin-bottom:14px;line-height:1}
+.bigtitle em{font-style:normal;color:var(--gold)}
 
 /* Bottom nav */
 .nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:520px;z-index:100;
@@ -314,7 +319,7 @@ async function cloudCreateGroup(code,groupName){
   code=normCode(code);
   const rows=await cloudFetch("/groups",{method:"POST",
     headers:Object.assign({Prefer:"return=representation"},CLOUD.headers),
-    body:JSON.stringify({code,name:groupName||"Fairway Dads"})});
+    body:JSON.stringify({code,name:groupName||"Tee Escape"})});
   return rows[0];
 }
 async function cloudFindGroup(code){
@@ -330,7 +335,7 @@ async function cloudAddPlayer(groupId,p){
 }
 async function cloudUpdatePlayer(p){
   await cloudFetch("/players?id=eq."+p.id,{method:"PATCH",
-    body:JSON.stringify({name:p.name,hcp:p.hcp,color:p.color})});
+    body:JSON.stringify({name:p.name,hcp:p.hcp,color:p.color,photo_url:p.photo||null})});
 }
 async function cloudDeletePlayer(id){
   await cloudFetch("/players?id=eq."+id,{method:"DELETE"});
@@ -343,7 +348,7 @@ async function cloudGetPlayers(groupId){
 async function cloudCreateRound(r){
   const body={group_id:S.cloud.groupId,course:r.course,holes:r.holes,nine:r.nine,
     format:r.format,player_ids:r.players,team_a:r.teamA,team_b:r.teamB,
-    scores:r.scores,status:"live"};
+    scores:r.scores,tracking:r.tracking||{},status:"live"};
   const rows=await cloudFetch("/rounds",{method:"POST",
     headers:Object.assign({Prefer:"return=representation"},CLOUD.headers),
     body:JSON.stringify(body)});
@@ -351,7 +356,7 @@ async function cloudCreateRound(r){
 }
 async function cloudUpdateRound(r){
   await cloudFetch("/rounds?id=eq."+r.cloudId,{method:"PATCH",
-    body:JSON.stringify({scores:r.scores,status:r.done?"done":"live",
+    body:JSON.stringify({scores:r.scores,tracking:r.tracking||{},status:r.done?"done":"live",
       summary:r.summary||null})});
 }
 async function cloudGetRounds(groupId){
@@ -385,6 +390,77 @@ async function loadPins(){
   try{ applyPins(await cloudGetPins(S.cloud.groupId)); }catch(e){ console.warn("pins load failed",e); }
 }
 
+// ---- banter / comments ----
+async function cloudGetBanter(groupId,roundId){
+  let q="/banter?group_id=eq."+groupId+"&select=*&order=created_at.asc";
+  if(roundId)q+="&round_id=eq."+roundId;
+  return await cloudFetch(q);
+}
+async function cloudPostBanter(text,roundId,photoUrl){
+  const me=S.players.find(p=>p.id===S.meId);
+  const body={group_id:S.cloud.groupId,round_id:roundId||null,
+    author:me?me.name:"A dad",author_id:S.meId||null,text:text||"",photo_url:photoUrl||null,reactions:{}};
+  const rows=await cloudFetch("/banter",{method:"POST",
+    headers:Object.assign({Prefer:"return=representation"},CLOUD.headers),
+    body:JSON.stringify(body)});
+  return rows[0];
+}
+async function cloudUpdateReactions(banterId,reactions){
+  await cloudFetch("/banter?id=eq."+banterId,{method:"PATCH",body:JSON.stringify({reactions})});
+}
+// auto-post: avoid duplicates by tagging text with a marker the app recognises
+async function autoPost(text,roundId){
+  try{
+    await cloudFetch("/banter",{method:"POST",headers:CLOUD.headers,
+      body:JSON.stringify({group_id:S.cloud.groupId,round_id:roundId||null,
+        author:"⛳ Tee Escape",author_id:null,text:text,reactions:{}})});
+  }catch(e){console.warn("autopost failed",e);}
+}
+
+// ---- photo upload to Supabase Storage ----
+async function uploadPhoto(file,prefix){
+  // resize/compress first
+  const blob=await compressImage(file,1280,0.82);
+  const name=(prefix||"img")+"_"+Date.now()+"_"+Math.random().toString(36).slice(2,7)+".jpg";
+  const path=S.cloud.groupId+"/"+name;
+  const r=await fetch(CLOUD.url.replace("/rest/v1","")+"/storage/v1/object/photos/"+path,{
+    method:"POST",
+    headers:{apikey:CLOUD.key,Authorization:"Bearer "+CLOUD.key,"Content-Type":"image/jpeg"},
+    body:blob
+  });
+  if(!r.ok){throw new Error("upload HTTP "+r.status+" "+(await r.text()));}
+  // public URL
+  return CLOUD.url.replace("/rest/v1","")+"/storage/v1/object/public/photos/"+path;
+}
+function compressImage(file,maxDim,quality){
+  return new Promise((resolve,reject)=>{
+    const img=new Image();
+    const url=URL.createObjectURL(file);
+    img.onload=()=>{
+      URL.revokeObjectURL(url);
+      let {width,height}=img;
+      if(width>height && width>maxDim){height=height*maxDim/width;width=maxDim;}
+      else if(height>maxDim){width=width*maxDim/height;height=maxDim;}
+      const cv=document.createElement("canvas");cv.width=width;cv.height=height;
+      cv.getContext("2d").drawImage(img,0,0,width,height);
+      cv.toBlob(b=>b?resolve(b):reject(new Error("compress failed")),"image/jpeg",quality);
+    };
+    img.onerror=()=>{URL.revokeObjectURL(url);reject(new Error("bad image"));};
+    img.src=url;
+  });
+}
+
+// ---- banter loading into local cache (keyed by round) ----
+async function loadBanter(roundId){
+  if(!S.cloud)return [];
+  try{
+    const rows=await cloudGetBanter(S.cloud.groupId,roundId);
+    S.banterCache=S.banterCache||{};
+    S.banterCache[roundId||"group"]=rows;
+    return rows;
+  }catch(e){console.warn("banter load failed",e);return [];}
+}
+
 
 // ---- map cloud row <-> local round ----
 function roundFromCloud(row){
@@ -392,7 +468,7 @@ function roundFromCloud(row){
     id:row.id, cloudId:row.id, date:new Date(row.created_at).getTime(),
     course:row.course, holes:row.holes, nine:row.nine, format:row.format,
     players:row.player_ids||[], teamA:row.team_a||[], teamB:row.team_b||[],
-    scores:row.scores||{}, current:0,
+    scores:row.scores||{}, tracking:row.tracking||{}, current:0,
     done:row.status==="done", summary:row.summary||null, banter:[],
     _updated:row.updated_at
   };
@@ -407,7 +483,7 @@ async function cloudPull(){
       cloudGetRounds(S.cloud.groupId)
     ]);
     // players: cloud is source of truth
-    S.players=players.map(p=>({id:p.id,name:p.name,hcp:Number(p.hcp),color:p.color}));
+    S.players=players.map(p=>({id:p.id,name:p.name,hcp:Number(p.hcp),color:p.color,photo:p.photo_url||null}));
     // rounds
     const cloudRounds=rounds.map(roundFromCloud);
     const live=cloudRounds.find(r=>!r.done);
@@ -428,14 +504,36 @@ async function cloudPull(){
   }catch(e){ console.warn("pull failed",e); }
 }
 
-// debounced push of the active round's scores
+// debounced push — merge-safe so each phone only writes its own slice
 function cloudPushSoon(){
   if(!S.cloud||!S.active||!S.active.cloudId)return;
   S.active._updated=new Date().toISOString();
   clearTimeout(PUSH_TIMER);
   PUSH_TIMER=setTimeout(async()=>{
-    try{ await cloudUpdateRound(S.active); CLOUD_OK=true; }
-    catch(e){ console.warn("push failed",e); }
+    try{
+      const r=S.active;
+      // pull the freshest cloud copy and merge other players' data so we don't clobber them
+      const fresh=await cloudGetRound(r.cloudId);
+      if(fresh){
+        const mergedScores=Object.assign({},fresh.scores||{},{}); 
+        const mergedTrack=Object.assign({},fresh.tracking||{},{});
+        // overlay every player slice I currently hold locally (covers single-scorer mode too)
+        Object.keys(r.scores||{}).forEach(pid=>{
+          // in my-card mode only overwrite my own slice; otherwise overwrite all I'm scoring
+          const meInRound=S.meId&&r.players.includes(S.meId);
+          if(!meInRound || pid===S.meId){
+            mergedScores[pid]=r.scores[pid];
+            if(r.tracking&&r.tracking[pid])mergedTrack[pid]=r.tracking[pid];
+          } else {
+            // keep cloud's version for others, but seed if missing
+            if(!mergedScores[pid])mergedScores[pid]=r.scores[pid];
+          }
+        });
+        r.scores=mergedScores; r.tracking=mergedTrack;
+      }
+      await cloudUpdateRound(r);
+      CLOUD_OK=true;
+    }catch(e){ console.warn("push failed",e); }
   },600);
 }
 
@@ -445,6 +543,7 @@ function startSync(){
   SYNC_TIMER=setInterval(async()=>{
     await cloudPull();
     if(S.tab==="gps") await loadPins();
+    if(S.tab==="play"&&S.active&&S.active.cloudId) await loadBanter(S.active.cloudId);
     if(S.tab==="play"||S.tab==="board"||S.tab==="home")render();
   },4000);
 }
@@ -455,7 +554,24 @@ function stopSync(){ if(SYNC_TIMER)clearInterval(SYNC_TIMER); SYNC_TIMER=null; }
 const $=(s,r=document)=>r.querySelector(s);
 const el=(t,c,h)=>{const e=document.createElement(t);if(c)e.className=c;if(h!=null)e.innerHTML=h;return e;};
 const initials=n=>n.trim().split(/\s+/).map(w=>w[0]).join("").slice(0,2).toUpperCase()||"?";
+// avatar markup: photo if available, else coloured initials. size in px.
+function avatarHTML(p,size){
+  size=size||38;
+  if(p&&p.photo){
+    return `<div class="av" style="width:${size}px;height:${size}px;background:#000;overflow:hidden;padding:0">
+      <img src="${p.photo}" style="width:100%;height:100%;object-fit:cover" alt=""></div>`;
+  }
+  const fs=Math.round(size*0.4);
+  return `<div class="av" style="width:${size}px;height:${size}px;background:${p?p.color:'#888'};font-size:${fs}px">${p?initials(p.name):'?'}</div>`;
+}
 const uid=()=>Date.now()+Math.floor(Math.random()*999);
+function toggleChip(label,on,onclick){
+  const b=el("button","");
+  b.style.cssText=`background:${on?'var(--lime)':'rgba(255,255,255,.06)'};color:${on?'var(--green-900)':'var(--cream-dim)'};border:1px solid ${on?'var(--lime)':'rgba(255,255,255,.12)'};border-radius:20px;padding:6px 13px;font-size:13px;font-weight:600;cursor:pointer`;
+  b.innerHTML=(on?'✓ ':'')+label;
+  b.onclick=onclick;
+  return b;
+}
 function toast(m){const t=el("div","toast",m);document.body.appendChild(t);setTimeout(()=>t.remove(),2400);}
 
 // Course handicap for a number of holes. WHS-style proportional to holes played.
@@ -649,12 +765,17 @@ function renderError(app,err){
 function Topbar(){
   const t=el("div","topbar");
   t.innerHTML=`<div class="brand">
-    <svg class="flag" viewBox="0 0 40 40" fill="none">
-      <path d="M10 4v32" stroke="#c8f04a" stroke-width="2.4" stroke-linecap="round"/>
-      <path d="M11 5l16 5-16 6V5z" fill="#c2643c"/>
-      <circle cx="10" cy="36" r="3" fill="#34a35a"/>
+    <svg class="flag" viewBox="0 0 44 44" fill="none">
+      <circle cx="22" cy="22" r="21" stroke="var(--gold)" stroke-width="1.5" opacity="0.5"/>
+      <!-- flag -->
+      <path d="M33 9v15" stroke="var(--gold)" stroke-width="1.8" stroke-linecap="round"/>
+      <path d="M33 10l7 2.5-7 2.5z" fill="var(--gold)"/>
+      <!-- seated golfer silhouette -->
+      <path d="M11 31c0-1 .5-2 1.5-2.2l3-.6 1.2-5.5c.3-1.3 1.3-2.1 2.5-2.1 1.4 0 2.4 1 2.4 2.4l-.1 6.8c0 .9-.6 1.6-1.5 1.7l-7 .9c-1 .1-2-.4-2-1.1z" fill="var(--cream)"/>
+      <circle cx="20.5" cy="16.5" r="2.6" fill="var(--cream)"/>
+      <path d="M12 31l1.5 4M20 31l1.5 4" stroke="var(--cream)" stroke-width="1.6" stroke-linecap="round"/>
     </svg>
-    <div><h1>Fairway <span>Dads</span></h1><div class="brand-sub">Hilton Park · est. banter</div></div>
+    <div><h1>TEE <span>ESCAPE</span></h1><div class="brand-sub">Dads Golf Club</div></div>
   </div>`;
   return t;
 }
@@ -665,7 +786,7 @@ function Nav(){
     ["home","Home",'<path d="M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10"/>'],
     ["play","Play",'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'],
     ["gps","GPS",'<path d="M12 2C8 2 5 5 5 9c0 5 7 13 7 13s7-8 7-13c0-4-3-7-7-7z"/><circle cx="12" cy="9" r="2.4"/>'],
-    ["board","Board",'<path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/>'],
+    ["board","Stats",'<path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/>'],
     ["dads","Dads",'<circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.5 3-6 6-6s6 2.5 6 6"/><circle cx="17" cy="9" r="2.6"/><path d="M16 20c0-2.5 1.5-4.5 4-4.8"/>']
   ];
   items.forEach(([k,lbl,svg])=>{
@@ -682,8 +803,9 @@ function Gate(){
   const hero=el("div","card");
   hero.style.background="linear-gradient(150deg, var(--green-600), var(--green-700))";
   hero.innerHTML=`<div class="eyebrow">Welcome to the clubhouse</div>
-    <div class="display" style="font-size:32px;color:var(--cream);margin:6px 0 8px">Get the <em style="color:var(--lime);font-style:italic" class="serif">dads</em> together</div>
-    <div class="muted mini">Create a group and share the code, or join with a code a mate gave you. Everyone with the code sees the same games, scores and leaderboard.</div>`;
+    <div class="display" style="font-size:34px;color:var(--cream);margin:6px 0 8px">Get the<br><span style="color:var(--gold)">dads</span> together</div>
+    <div class="muted mini" style="margin-bottom:6px">Find time. Hit bombs. Leave the chaos behind.</div>
+    <div class="muted mini">Create a group and share the code, or join with one a mate gave you. Everyone with the code sees the same games, scores and leaderboard.</div>`;
   w.appendChild(hero);
 
   if(!S.gate)S.gate={mode:"choose",code:"",name:"",busy:false,err:""};
@@ -781,10 +903,11 @@ function Home(){
   // hero
   const hero=el("div","card");
   hero.style.background="linear-gradient(150deg, var(--green-600), var(--green-700))";
-  const lastRound=S.rounds[S.rounds.length-1];
-  hero.innerHTML=`<div class="eyebrow">${greeting()}, ${S.players[0]?.name||"Dad"}</div>
-    <div class="display" style="font-size:34px;color:var(--cream);margin:4px 0 10px">Ready for<br>a <em style="color:var(--lime);font-style:italic" class="serif">wee game?</em></div>
-    <div class="muted mini">${S.players.length} dad${S.players.length!==1?"s":""} in the group · ${S.rounds.length} round${S.rounds.length!==1?"s":""} logged</div>`;
+  const me=S.players.find(p=>p.id===S.meId);
+  hero.innerHTML=`<div class="eyebrow">${greeting()}${me?', '+me.name.split(' ')[0]:''}</div>
+    <div class="display" style="font-size:34px;color:var(--cream);margin:4px 0 10px">Time to<br><span style="color:var(--gold)">escape?</span></div>
+    <div class="muted mini">${S.players.length} dad${S.players.length!==1?"s":""} in the club · ${S.rounds.length} round${S.rounds.length!==1?"s":""} logged</div>
+    <div class="serif" style="font-style:italic;color:var(--gold);font-size:14px;margin-top:10px;opacity:.85">Golf &gt; Kids. Don't tell them.</div>`;
   w.appendChild(hero);
 
   if(S.active){
@@ -811,7 +934,7 @@ function Home(){
     standings.forEach((s,i)=>{
       const row=el("div","lbrow");
       row.innerHTML=`<div class="rank r${i+1}">${i+1}</div>
-        <div class="av" style="background:${s.color}">${initials(s.name)}</div>
+        ${avatarHTML(S.players.find(x=>x.id===s.id)||{name:s.name,color:s.color},38)}
         <div style="flex:1"><div style="font-weight:700">${s.name}</div><div class="muted mini">${s.wins} win${s.wins!==1?"s":""} · ${s.played} played</div></div>
         <div class="serif" style="font-size:20px;color:var(--lime);font-weight:900">${s.pts}</div>`;
       sb.appendChild(row);
@@ -844,7 +967,7 @@ function Dads(){
       <div class="serif" style="font-size:24px;color:var(--lime);letter-spacing:.05em">${S.cloud.code}</div></div></div>`;
     const share=el("button","btn btn-ghost btn-sm","📤 Share code with the dads");share.style.cssText="width:100%;margin-top:10px";
     share.onclick=()=>{
-      const msg=`Join our golf group "${S.cloud.name}" on Fairway Dads — use code ${S.cloud.code}`;
+      const msg=`Join our golf group "${S.cloud.name}" on Tee Escape — use code ${S.cloud.code}`;
       if(navigator.share)navigator.share({text:msg}).catch(()=>{});
       else{navigator.clipboard?.writeText(msg);toast("Copied — paste into the group chat");}
     };
@@ -870,7 +993,7 @@ function Dads(){
   S.players.forEach(p=>{
     const c=el("div","card tight");
     c.innerHTML=`<div class="row">
-      <div class="av" style="background:${p.color};width:46px;height:46px;font-size:17px">${initials(p.name)}</div>
+      ${avatarHTML(p,46)}
       <div style="flex:1">
         <div style="font-weight:700;font-size:17px">${p.name}${S.meId===p.id?' <span class="mini" style="color:var(--lime)">· you</span>':''}</div>
         <div class="muted mini">Handicap ${p.hcp}</div>
@@ -884,8 +1007,24 @@ function Dads(){
     hcpI.onblur=()=>{cloudUpdatePlayer(p).catch(()=>{});save();};
     edit.appendChild(nameI);edit.appendChild(hcpI);
     c.appendChild(edit);
+    // photo upload
+    const photoBtn=el("button","btn btn-ghost btn-sm",p.photo?"📷 Change photo":"📷 Add profile photo");
+    photoBtn.style.cssText="width:100%;margin-top:10px";
+    const fileIn=el("input");fileIn.type="file";fileIn.accept="image/*";fileIn.style.display="none";
+    fileIn.onchange=async e=>{
+      const f=e.target.files[0];if(!f)return;
+      photoBtn.textContent="⏳ Uploading…";photoBtn.disabled=true;
+      try{
+        const url=await uploadPhoto(f,"profile");
+        p.photo=url;
+        await cloudUpdatePlayer(p);
+        toast("Photo updated 📸");save();
+      }catch(err){toast("Upload failed — try again");photoBtn.textContent="📷 Add profile photo";photoBtn.disabled=false;}
+    };
+    photoBtn.onclick=()=>fileIn.click();
+    c.appendChild(photoBtn);c.appendChild(fileIn);
     const statsBtn=el("button","btn btn-ghost btn-sm","📊 View stats & profile");
-    statsBtn.style.cssText="width:100%;margin-top:10px";
+    statsBtn.style.cssText="width:100%;margin-top:8px";
     statsBtn.onclick=()=>{S.profileId=p.id;S.tab="profile";render();};
     c.appendChild(statsBtn);
     const d=el("button","del","Remove dad");
@@ -972,7 +1111,7 @@ function SetupRound(){
   S.players.forEach(p=>{
     const on=st.players.includes(p.id);
     const r=el("div","pscore");r.style.marginBottom="8px";r.style.cursor="pointer";
-    r.innerHTML=`<div class="row" style="flex:1"><div class="av" style="background:${p.color}">${initials(p.name)}</div>
+    r.innerHTML=`<div class="row" style="flex:1">${avatarHTML(p,38)}
       <div class="nmblock"><div class="pn">${p.name}</div><div class="sub">Hcp ${p.hcp}</div></div></div>
       <div style="font-size:22px;color:${on?'var(--lime)':'rgba(255,255,255,.2)'}">${on?'✓':'○'}</div>`;
     r.onclick=()=>{
@@ -994,7 +1133,7 @@ function SetupRound(){
       const p=S.players.find(x=>x.id===pid);
       const inA=st.teamA.includes(pid), inB=st.teamB.includes(pid);
       const r=el("div","row between");r.style.marginBottom="8px";
-      r.innerHTML=`<div class="row"><div class="av" style="background:${p.color};width:32px;height:32px;font-size:13px">${initials(p.name)}</div><span style="font-weight:600">${p.name}</span></div>`;
+      r.innerHTML=`<div class="row">${avatarHTML(p,32)}<span style="font-weight:600">${p.name}</span></div>`;
       const tog=el("div","btn-row");
       const a=el("button","chip"+(inA?" on":""),"A");
       const b=el("button","chip"+(inB?" on":""),"B");
@@ -1030,9 +1169,9 @@ async function startRound(){
     id:uid(),date:Date.now(),
     course:st.course,holes:st.holes,nine:st.nine,format:st.format,
     players:[...st.players],teamA:[...st.teamA],teamB:[...st.teamB],
-    scores:{},current:0,banter:[]
+    scores:{},tracking:{},current:0,banter:[]
   };
-  st.players.forEach(p=>r.scores[p]={});
+  st.players.forEach(p=>{r.scores[p]={};r.tracking[p]={};});
   S.active=r;
   S.setup={};
   S.tab="play";render();
@@ -1081,26 +1220,65 @@ function Play(){
   hc.appendChild(prog);
   w.appendChild(hc);
 
-  // per-player score steppers
-  r.players.forEach(pid=>{
+  // Determine "my card" mode: if I've set who I am and I'm in this round,
+  // I score only myself; everyone else is read-only. If no identity set,
+  // fall back to scoring everyone (single shared scorer).
+  const meInRound = S.meId && r.players.includes(S.meId);
+  const orderedPlayers = meInRound
+    ? [S.meId, ...r.players.filter(pid=>pid!==S.meId)]
+    : r.players;
+
+  orderedPlayers.forEach(pid=>{
     const p=S.players.find(x=>x.id===pid);
+    if(!p)return;
     const ph=playingHcp(p,r);
     const shots=strokesOnHole(ph,hole.si);
     const v=r.scores[pid]?.[hole.n];
-    const row=el("div","pscore");
+    const isMe = !meInRound || pid===S.meId; // interactive if it's me, or no-identity fallback
     const sc=scoreClass(v,hole.par);
-    row.innerHTML=`<div class="nmblock row"><div class="av" style="background:${p.color};width:34px;height:34px;font-size:13px">${initials(p.name)}</div>
-      <div><div class="pn">${p.name}</div><div class="sub">${shots>0?'<span class="dot"></span>'.repeat(shots)+' stroke'+(shots>1?'s':'')+' here':'No strokes'} · net ${v!=null?v-shots:'–'}</div></div></div>`;
-    const stp=el("div","stepper");
-    const minus=el("button","","–");
-    const val=el("div","val",v!=null?v:"–");
-    if(sc){val.style.color=sc==='eagle'?'var(--gold)':sc==='birdie'?'var(--clay)':sc==='dbl'?'var(--clay)':'var(--cream)';}
-    const plus=el("button","","＋");
-    minus.onclick=()=>{const cur=r.scores[pid][hole.n]||hole.par;const nx=Math.max(1,cur-1);r.scores[pid][hole.n]=nx;maybeBanter(r,hole);cloudPushSoon();render();};
-    plus.onclick=()=>{const cur=r.scores[pid][hole.n]||(hole.par-1);r.scores[pid][hole.n]=cur+1;maybeBanter(r,hole);cloudPushSoon();render();};
-    stp.appendChild(minus);stp.appendChild(val);stp.appendChild(plus);
-    row.appendChild(stp);
+
+    const row=el("div","pscore");
+    if(pid===S.meId)row.style.borderColor="rgba(200,240,74,.4)";
+    row.innerHTML=`<div class="nmblock row">${avatarHTML(p,34)}
+      <div><div class="pn">${p.name}${pid===S.meId?' <span class="mini" style="color:var(--lime)">· you</span>':''}</div>
+      <div class="sub">${shots>0?'<span class="dot"></span>'.repeat(shots)+' stroke'+(shots>1?'s':'')+' here':'No strokes'} · net ${v!=null?v-shots:'–'}</div></div></div>`;
+
+    if(isMe){
+      const stp=el("div","stepper");
+      const minus=el("button","","–");
+      const val=el("div","val",v!=null?v:"–");
+      if(sc){val.style.color=sc==='eagle'?'var(--gold)':sc==='birdie'?'var(--clay)':sc==='dbl'?'var(--clay)':'var(--cream)';}
+      const plus=el("button","","＋");
+      minus.onclick=()=>{const cur=r.scores[pid][hole.n]||hole.par;const nx=Math.max(1,cur-1);r.scores[pid][hole.n]=nx;maybeBanter(r,hole,pid);cloudPushSoon();render();};
+      plus.onclick=()=>{const cur=r.scores[pid][hole.n]||(hole.par-1);r.scores[pid][hole.n]=cur+1;maybeBanter(r,hole,pid);cloudPushSoon();render();};
+      stp.appendChild(minus);stp.appendChild(val);stp.appendChild(plus);
+      row.appendChild(stp);
+    } else {
+      // read-only score display
+      const ro=el("div","");ro.style.cssText="flex:none;text-align:center;min-width:54px";
+      ro.innerHTML=`<div class="serif" style="font-size:26px;font-weight:900;color:${sc==='eagle'?'var(--gold)':sc==='birdie'?'var(--clay)':v!=null?'var(--cream)':'rgba(255,255,255,.25)'}">${v!=null?v:'–'}</div>`;
+      row.appendChild(ro);
+    }
     w.appendChild(row);
+
+    // fairway + GIR taps — only for me, only my own
+    if(isMe && (!meInRound || pid===S.meId)){
+      r.tracking=r.tracking||{}; r.tracking[pid]=r.tracking[pid]||{};
+      const tk=r.tracking[pid][hole.n]||{};
+      const trackRow=el("div","row");trackRow.style.cssText="gap:8px;margin:-4px 0 10px 4px";
+      // fairway (hidden on par 3s — no tee shot to fairway)
+      if(hole.par>3){
+        trackRow.appendChild(toggleChip("🛣 Fairway", tk.fw===true, ()=>{
+          tk.fw = tk.fw===true ? null : true;
+          r.tracking[pid][hole.n]=tk; cloudPushSoon(); render();
+        }));
+      }
+      trackRow.appendChild(toggleChip("🟢 Green in reg", tk.gir===true, ()=>{
+        tk.gir = tk.gir===true ? null : true;
+        r.tracking[pid][hole.n]=tk; cloudPushSoon(); render();
+      }));
+      w.appendChild(trackRow);
+    }
   });
 
   // live match / skins status
@@ -1131,14 +1309,170 @@ function Play(){
   gpsBtn.onclick=()=>{S.gpsHole=hole.n;S.tab="gps";render();};
   w.appendChild(gpsBtn);
 
-  // banter feed
-  if(r.banter.length){
-    const bf=el("div","card");
-    bf.innerHTML=`<div class="eyebrow">Clubhouse chatter</div>`;
-    r.banter.slice(-4).reverse().forEach(b=>bf.appendChild(el("div","banter","“"+b+"”")));
-    w.appendChild(bf);
-  }
+  // banter feed for this round
+  w.appendChild(BanterFeed(r.cloudId));
   return w;
+}
+
+// ---------- BANTER FEED ----------
+function BanterFeed(roundId){
+  const wrap=el("div","card");
+  wrap.innerHTML=`<div class="eyebrow">💬 Clubhouse chatter</div>`;
+  const key=roundId||"group";
+  const posts=(S.banterCache&&S.banterCache[key])||[];
+
+  // load fresh in background
+  loadBanter(roundId).then(rows=>{
+    // only re-render if count changed to avoid disrupting typing
+    if(rows.length!==posts.length && (S.tab==="play"||S.tab==="banter"))render();
+  });
+
+  if(!S.meId){
+    wrap.appendChild(el("div","mini muted",`Set who you are on the Dads tab to join the chat.`));
+  }
+
+  // composer
+  if(S.meId){
+    const comp=el("div");comp.style.marginTop="10px";
+    const ta=el("textarea");ta.placeholder="Say something… (rinse a mate, call a result)";
+    ta.style.cssText="width:100%;min-height:44px;resize:none;font-family:'Outfit';font-size:15px;padding:11px 13px;border-radius:12px;background:rgba(0,0,0,.25);border:1px solid rgba(255,255,255,.13);color:var(--cream)";
+    ta.value=S.banterDraft||"";
+    ta.oninput=e=>S.banterDraft=e.target.value;
+    comp.appendChild(ta);
+    const row=el("div","row between");row.style.marginTop="8px";
+    // photo attach
+    const photoBtn=el("button","btn btn-ghost btn-sm",S.banterPhoto?"📷 Photo attached ✓":"📷 Add photo");
+    photoBtn.onclick=()=>pickBanterPhoto();
+    const sendBtn=el("button","btn btn-primary btn-sm","Post");
+    sendBtn.style.minWidth="80px";
+    sendBtn.onclick=()=>postBanter(roundId);
+    row.appendChild(photoBtn);row.appendChild(sendBtn);
+    comp.appendChild(row);
+    if(S.banterPhoto){
+      const prev=el("div","mini muted");prev.style.marginTop="6px";
+      prev.textContent="Photo ready to post — hit Post to share it.";
+      comp.appendChild(prev);
+    }
+    wrap.appendChild(comp);
+  }
+
+  wrap.appendChild(el("div","divider"));
+
+  if(!posts.length){
+    wrap.appendChild(el("div","mini muted center","No chatter yet. Be the first to stir it up. 🍿"));
+    return wrap;
+  }
+
+  // posts newest first
+  [...posts].reverse().forEach(b=>{
+    wrap.appendChild(banterPost(b));
+  });
+  return wrap;
+}
+
+function banterPost(b){
+  const isAuto=!b.author_id && ((b.author||"").includes("Fairway Dads")||(b.author||"").includes("Tee Escape"));
+  const author=S.players.find(p=>p.id===b.author_id);
+  const post=el("div");post.style.cssText="display:flex;gap:10px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.06)";
+  // avatar
+  const avWrap=el("div");avWrap.style.flex="none";
+  if(isAuto){avWrap.innerHTML=`<div class="av" style="width:34px;height:34px;background:var(--green-600);font-size:16px">⛳</div>`;}
+  else avWrap.innerHTML=avatarHTML(author||{name:b.author||"?",color:"#888"},34);
+  post.appendChild(avWrap);
+  // body
+  const body=el("div");body.style.flex="1";body.style.minWidth="0";
+  const when=timeAgo(b.created_at);
+  body.innerHTML=`<div class="row" style="gap:7px"><span style="font-weight:700;font-size:14px;${isAuto?'color:var(--lime)':''}">${isAuto?'Tee Escape':(b.author||'A dad')}</span><span class="mini muted">${when}</span></div>`;
+  if(b.text)body.appendChild(el("div","",`<div style="font-size:15px;margin:2px 0;${isAuto?'font-style:italic;color:var(--gold)':''}">${escapeHTML(b.text)}</div>`));
+  if(b.photo_url){
+    const im=el("img");im.src=b.photo_url;im.loading="lazy";
+    im.style.cssText="width:100%;border-radius:12px;margin-top:6px;max-height:320px;object-fit:cover";
+    body.appendChild(im);
+  }
+  // reactions
+  body.appendChild(reactionRow(b));
+  post.appendChild(body);
+  return post;
+}
+
+const REACT_EMOJI=["🔥","😂","👏","💀","🏌️","🍺"];
+function reactionRow(b){
+  const row=el("div","row");row.style.cssText="gap:6px;margin-top:7px;flex-wrap:wrap";
+  const reactions=b.reactions||{};
+  // existing reaction counts
+  Object.entries(reactions).forEach(([emoji,ids])=>{
+    if(!ids||!ids.length)return;
+    const mine=S.meId&&ids.includes(S.meId);
+    const chip=el("button","");
+    chip.style.cssText=`background:${mine?'var(--lime)':'rgba(255,255,255,.08)'};color:${mine?'var(--green-900)':'var(--cream)'};border:none;border-radius:20px;padding:3px 10px;font-size:13px;font-weight:600;cursor:pointer`;
+    chip.textContent=emoji+" "+ids.length;
+    chip.onclick=()=>toggleReaction(b,emoji);
+    row.appendChild(chip);
+  });
+  // add-reaction button
+  if(S.meId){
+    const add=el("button","");
+    add.style.cssText="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);color:var(--cream-dim);border-radius:20px;padding:3px 10px;font-size:13px;cursor:pointer";
+    add.textContent="＋";
+    add.onclick=()=>{S.reactPickerFor=S.reactPickerFor===b.id?null:b.id;render();};
+    row.appendChild(add);
+  }
+  if(S.reactPickerFor===b.id){
+    const pick=el("div","row");pick.style.cssText="gap:4px;margin-top:6px;width:100%";
+    REACT_EMOJI.forEach(e=>{
+      const x=el("button","");x.style.cssText="background:rgba(0,0,0,.25);border:none;border-radius:10px;padding:6px 9px;font-size:18px;cursor:pointer";
+      x.textContent=e;
+      x.onclick=()=>{toggleReaction(b,e);S.reactPickerFor=null;};
+      pick.appendChild(x);
+    });
+    row.appendChild(pick);
+  }
+  return row;
+}
+
+function escapeHTML(s){return (s||"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
+function timeAgo(iso){
+  if(!iso)return "";
+  const s=Math.floor((Date.now()-new Date(iso).getTime())/1000);
+  if(s<60)return "just now"; if(s<3600)return Math.floor(s/60)+"m";
+  if(s<86400)return Math.floor(s/3600)+"h"; return Math.floor(s/86400)+"d";
+}
+
+async function postBanter(roundId){
+  const text=(S.banterDraft||"").trim();
+  if(!text && !S.banterPhoto){toast("Write something or add a photo");return;}
+  const draft=text, photoFile=S.banterPhoto;
+  S.banterDraft="";S.banterPhoto=null;
+  toast(photoFile?"Posting with photo…":"Posting…");
+  try{
+    let photoUrl=null;
+    if(photoFile)photoUrl=await uploadPhoto(photoFile,"banter");
+    await cloudPostBanter(draft,roundId,photoUrl);
+    await loadBanter(roundId);
+    render();
+  }catch(e){
+    toast("Post failed — "+(e.message||"try again"));
+    S.banterDraft=draft;S.banterPhoto=photoFile;
+  }
+}
+
+function pickBanterPhoto(){
+  const inp=document.createElement("input");
+  inp.type="file";inp.accept="image/*";
+  inp.onchange=e=>{const f=e.target.files[0];if(f){S.banterPhoto=f;render();}};
+  inp.click();
+}
+
+async function toggleReaction(b,emoji){
+  if(!S.meId){toast("Set who you are first");return;}
+  const reactions=Object.assign({},b.reactions||{});
+  const ids=new Set(reactions[emoji]||[]);
+  if(ids.has(S.meId))ids.delete(S.meId); else ids.add(S.meId);
+  reactions[emoji]=[...ids];
+  if(!reactions[emoji].length)delete reactions[emoji];
+  b.reactions=reactions; // optimistic
+  render();
+  try{ await cloudUpdateReactions(b.id,reactions); }catch(e){ toast("Reaction didn't save"); }
 }
 
 function liveStatus(r){
@@ -1180,16 +1514,24 @@ function liveStatus(r){
   return box;
 }
 
-function maybeBanter(r,hole){
-  // small chance to drop a line on a notable score
-  const vals=r.players.map(p=>r.scores[p]?.[hole.n]).filter(Boolean);
-  if(!vals.length)return;
-  const best=Math.min(...vals);
-  if(best<=hole.par-1 && Math.random()<0.5){
-    const b=BANTER[Math.floor(Math.random()*BANTER.length)];
-    if(r.banter[r.banter.length-1]!==b)r.banter.push(b);
-  }
+function maybeBanter(r,hole,pid){
+  const g=r.scores[pid]?.[hole.n];
+  if(!g)return;
+  const d=g-hole.par;
+  if(d>-1)return; // only birdie or better
+  // dedupe: one auto-post per player+hole
+  r._autoposted=r._autoposted||{};
+  const key=pid+"#"+hole.n+"#"+g;
+  if(r._autoposted[key])return;
+  r._autoposted[key]=true;
+  const p=S.players.find(x=>x.id===pid);
+  const nm=p?p.name.split(' ')[0]:"Someone";
+  let msg;
+  if(d<=-2)msg=`🦅 ${nm} made an EAGLE on ${hole.name}! Get the bell rung. ${pick(BANTER)}`;
+  else msg=`🐦 ${nm} birdied ${hole.name}. ${pick(BANTER)}`;
+  if(r.cloudId)autoPost(msg,r.cloudId).then(()=>{loadBanter(r.cloudId);});
 }
+function pick(a){return a[Math.floor(Math.random()*a.length)];}
 
 // ---------- SCORECARD ----------
 function Scorecard(r){
@@ -1229,6 +1571,11 @@ async function finishRound(){
   // push final state to cloud
   if(r.cloudId){
     try{ await cloudUpdateRound(r); }catch(e){ console.warn("finish push failed",e); }
+    // auto-post the result
+    try{
+      const c=COURSES[r.course];
+      await autoPost(`🏁 Result — ${r.summary.text} (${c.short}, ${fmtFormat(r.format)}). ${pick(BANTER)}`,r.cloudId);
+    }catch(e){}
   }
   S.rounds.unshift(r);
   S.active=null;
@@ -1309,6 +1656,20 @@ function playerStats(pid){
   let nem=null;
   Object.values(byHole).forEach(o=>{if(o.n>=2){const avg=o.tot/o.n;if(!nem||avg>nem.avg)nem={avg,h:o.ref,n:o.n};}});
   s.nemesis=nem;
+  // fairways & greens in regulation from tracking data
+  let firHit=0,firElig=0,girHit=0,girElig=0;
+  allRounds().forEach(r=>{
+    if(!r.players.includes(pid))return;
+    const tk=r.tracking?.[pid]||{};
+    holesInPlayFor(r).forEach(h=>{
+      const g=r.scores?.[pid]?.[h.n]; if(!g)return; // only count played holes
+      const t=tk[h.n]||{};
+      if(h.par>3){firElig++; if(t.fw===true)firHit++;}
+      girElig++; if(t.gir===true)girHit++;
+    });
+  });
+  s.firHit=firHit; s.firElig=firElig; s.firPct=firElig?Math.round(firHit/firElig*100):null;
+  s.girHit=girHit; s.girElig=girElig; s.girPct=girElig?Math.round(girHit/girElig*100):null;
   // net scoring trend per round (for sparkline)
   s.trend=allRounds().filter(r=>r.players.includes(pid)).map(r=>({date:r.date,net:netTotalFor(r,pid)})).filter(x=>x.net>0);
   return s;
@@ -1390,28 +1751,51 @@ function seasonStandings(){
 
 function Board(){
   const w=el("div");
-  w.appendChild(el("div","",`<div class="eyebrow">Glory & shame</div><div class="bigtitle">The <em>Board</em></div>`));
+  w.appendChild(el("div","",`<div class="eyebrow">Glory & shame</div><div class="bigtitle">The <em>Stats</em></div>`));
 
-  // season table
+  if(!S.boardSeg)S.boardSeg="season";
+  const seg=el("div","chips");seg.style.marginBottom="6px";
+  [["season","Season"],["dash","Dashboard"],["rounds","Rounds"]].forEach(([k,l])=>{
+    const ch=el("div","chip"+(S.boardSeg===k?" on":""),l);
+    ch.onclick=()=>{S.boardSeg=k;render();};
+    seg.appendChild(ch);
+  });
+  w.appendChild(seg);
+
+  if(S.boardSeg==="season") w.appendChild(BoardSeason());
+  else if(S.boardSeg==="dash") w.appendChild(BoardDashboard());
+  else w.appendChild(BoardRounds());
+  return w;
+}
+
+function BoardSeason(){
+  const w=el("div");
   const standings=seasonStandings();
-  if(standings.length){
-    const sb=el("div","card");
-    sb.innerHTML=`<div class="eyebrow">Season standings · 3pts win, 1pt played</div>`;
-    standings.forEach((s,i)=>{
-      const row=el("div","lbrow");
-      row.innerHTML=`<div class="rank r${i+1}">${i===0?'👑':i+1}</div>
-        <div class="av" style="background:${s.color}">${initials(s.name)}</div>
-        <div style="flex:1"><div style="font-weight:700">${s.name}</div><div class="muted mini">${s.wins} win${s.wins!==1?'s':''} · ${s.played} round${s.played!==1?'s':''}</div></div>
-        <div class="serif" style="font-size:22px;color:var(--lime);font-weight:900">${s.pts}</div>`;
-      sb.appendChild(row);
-    });
-    w.appendChild(sb);
+  if(!standings.length){
+    w.appendChild(el("div","card empty",`<div class="ico">📋</div>No rounds played yet. Standings fill up after your first game.`));
+    return w;
   }
+  const sb=el("div","card");
+  sb.innerHTML=`<div class="eyebrow">Season standings · 3pts win, 1pt played</div>`;
+  standings.forEach((s,i)=>{
+    const row=el("div","lbrow");
+    row.innerHTML=`<div class="rank r${i+1}">${i===0?'👑':i+1}</div>
+      ${avatarHTML(S.players.find(x=>x.id===s.id)||{name:s.name,color:s.color},38)}
+      <div style="flex:1"><div style="font-weight:700">${s.name}</div><div class="muted mini">${s.wins} win${s.wins!==1?'s':''} · ${s.played} round${s.played!==1?'s':''}</div></div>
+      <div class="serif" style="font-size:22px;color:var(--lime);font-weight:900">${s.pts}</div>`;
+    row.style.cursor="pointer";
+    row.onclick=()=>{S.profileId=s.id;S.tab="profile";render();};
+    sb.appendChild(row);
+  });
+  w.appendChild(sb);
+  return w;
+}
 
-  // history
-  w.appendChild(el("div","eyebrow","Recent rounds"));
+function BoardRounds(){
+  const w=el("div");
   if(!S.rounds.length){
     w.appendChild(el("div","card empty",`<div class="ico">📋</div>No rounds played yet.`));
+    return w;
   }
   [...S.rounds].reverse().forEach(r=>{
     const c=COURSES[r.course];
@@ -1432,6 +1816,127 @@ function Board(){
   return w;
 }
 
+// ---------- GROUP DASHBOARD ----------
+function BoardDashboard(){
+  const w=el("div");
+  const active=S.players.filter(p=>playerStats(p.id).holes>0);
+  if(active.length<1){
+    w.appendChild(el("div","card empty",`<div class="ico">📊</div>No stats yet — play a round and the dashboard lights up.`));
+    return w;
+  }
+  // precompute stats once
+  const stats={}; S.players.forEach(p=>stats[p.id]=playerStats(p.id));
+  const awards=groupAwards();
+
+  // metric definitions: label, icon, value fn, higher-is-better, formatter, suffix
+  const metrics=[
+    {key:"birdies",ico:"🐦",label:"Birdies",val:s=>s.birdies,hi:true},
+    {key:"eagles",ico:"🦅",label:"Eagles",val:s=>s.eagles,hi:true},
+    {key:"pars",ico:"🎯",label:"Pars",val:s=>s.pars,hi:true},
+    {key:"streak",ico:"🔥",label:"Best streak",val:s=>s.longestBirdieStreak,hi:true,suf:" in a row"},
+    {key:"avg",ico:"📉",label:"Scoring avg (net)",val:s=>avgNet(s),hi:false,fmt:v=>v?v.toFixed(1):"–"},
+    {key:"vspar",ico:"⛳",label:"Best vs par",val:s=>s.holes?+(s.vsPar/s.holes).toFixed(2):0,hi:false,fmt:v=>v>0?"+"+v:""+v,suf:"/hole"},
+    {key:"records",ico:"🏆",label:"Course records",val:s=>0,hi:true,custom:"records"},
+    {key:"blowups",ico:"💣",label:"Fewest blow-ups",val:s=>s.doubles+s.others,hi:false},
+    {key:"fir",ico:"🛣",label:"Fairways %",val:s=>s.firPct==null?-1:s.firPct,hi:true,fmt:v=>v<0?"–":v+"%"},
+    {key:"gir",ico:"🟢",label:"Greens in reg %",val:s=>s.girPct==null?-1:s.girPct,hi:true,fmt:v=>v<0?"–":v+"%"}
+  ];
+
+  // ---- "who leads what" compact grid ----
+  const grid=el("div","card");
+  grid.innerHTML=`<div class="eyebrow">Who leads what · tap a metric</div>`;
+  const g=el("div");g.style.cssText="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px";
+
+  // precompute records counts
+  const recCount={}; S.players.forEach(p=>recCount[p.id]=courseRecordsHeldBy(p.id).length);
+
+  metrics.forEach(m=>{
+    const ranked=rankMetric(m,stats,recCount);
+    const leader=ranked[0];
+    const tile=el("div","card tight");tile.style.cssText="margin:0;cursor:pointer;padding:12px";
+    if(!leader||leader.v===0&&m.hi){
+      tile.innerHTML=`<div style="font-size:20px">${m.ico}</div><div class="mini muted" style="margin-top:4px">${m.label}</div><div class="mini muted">—</div>`;
+    } else {
+      const p=S.players.find(x=>x.id===leader.id);
+      tile.innerHTML=`<div class="row between"><span style="font-size:20px">${m.ico}</span>
+        ${avatarHTML(p,26)}</div>
+        <div class="mini muted" style="margin-top:6px">${m.label}</div>
+        <div class="row between"><span style="font-weight:700;font-size:14px">${p.name.split(' ')[0]}</span>
+        <span class="serif" style="font-weight:900;color:var(--lime)">${fmtMetric(m,leader.v)}</span></div>`;
+    }
+    tile.onclick=()=>{S.dashMetric=S.dashMetric===m.key?null:m.key;render();};
+    g.appendChild(tile);
+  });
+  grid.appendChild(g);
+  w.appendChild(grid);
+
+  // ---- expanded table for selected metric ----
+  if(S.dashMetric){
+    const m=metrics.find(x=>x.key===S.dashMetric);
+    const ranked=rankMetric(m,stats,recCount);
+    const tc=el("div","card");tc.style.borderColor="var(--lime)";
+    tc.innerHTML=`<div class="row between"><div class="eyebrow">${m.ico} ${m.label} · full table</div>
+      <span class="del" style="cursor:pointer">✕ close</span></div>`;
+    tc.querySelector(".del").onclick=()=>{S.dashMetric=null;render();};
+    ranked.forEach((r,i)=>{
+      const p=S.players.find(x=>x.id===r.id);if(!p)return;
+      const row=el("div","lbrow");row.style.cursor="pointer";
+      row.innerHTML=`<div class="rank r${i+1}">${i+1}</div>
+        ${avatarHTML(p,38)}
+        <div style="flex:1"><div style="font-weight:700">${p.name}</div></div>
+        <div class="serif" style="font-size:20px;font-weight:900;color:${i===0?'var(--lime)':'var(--cream)'}">${fmtMetric(m,r.v)}</div>`;
+      row.onclick=()=>{S.profileId=p.id;S.tab="profile";render();};
+      tc.appendChild(row);
+    });
+    w.appendChild(tc);
+  }
+
+  // ---- daft awards strip ----
+  const ac=el("div","card");
+  ac.innerHTML=`<div class="eyebrow">🏅 Current title holders</div>`;
+  const aw=[
+    ["🐦","Birdie Machine",awards.mostBirdies,"birdies"],
+    ["🦅","Eagle Eye",awards.mostEagles,"eagles"],
+    ["🔥","On Fire",awards.longestStreak,"in a row"],
+    ["🎯","Mr Consistent",awards.mostPars,"pars"],
+    ["💣","Snowman Award",awards.biggestBlowup,"over par"]
+  ];
+  aw.forEach(([ico,title,data,suf])=>{
+    if(!data)return;
+    const p=S.players.find(x=>x.id===data.pid);if(!p)return;
+    const row=el("div","lbrow");row.style.cursor="pointer";
+    row.innerHTML=`<div style="font-size:24px;width:34px;text-align:center">${ico}</div>
+      <div style="flex:1"><div style="font-weight:700">${title}</div><div class="muted mini">${data.v} ${suf}</div></div>
+      ${avatarHTML(p,32)}`;
+    row.onclick=()=>{S.profileId=p.id;S.tab="profile";render();};
+    ac.appendChild(row);
+  });
+  w.appendChild(ac);
+
+  return w;
+}
+
+function avgNet(s){
+  if(!s.trend||!s.trend.length)return 0;
+  return s.trend.reduce((a,t)=>a+t.net,0)/s.trend.length;
+}
+function rankMetric(m,stats,recCount){
+  let arr=S.players.map(p=>{
+    let v;
+    if(m.custom==="records")v=recCount[p.id]||0;
+    else v=m.val(stats[p.id]);
+    return {id:p.id,v,holes:stats[p.id].holes};
+  }).filter(x=>x.holes>0);
+  arr.sort((a,b)=> m.hi ? b.v-a.v : a.v-b.v );
+  return arr;
+}
+function fmtMetric(m,v){
+  let out=m.fmt?m.fmt(v):String(v);
+  if(m.suf)out+=m.suf;
+  return out;
+}
+
+
 // ---------- PROFILE (per-dad stats) ----------
 function Profile(){
   const p=S.players.find(x=>x.id===S.profileId);
@@ -1446,7 +1951,7 @@ function Profile(){
   const head=el("div","card");
   head.style.background=`linear-gradient(150deg, ${p.color}22, var(--green-700))`;
   head.innerHTML=`<div class="row">
-    <div class="av" style="background:${p.color};width:60px;height:60px;font-size:24px">${initials(p.name)}</div>
+    ${avatarHTML(p,60)}
     <div style="flex:1">
       <div class="serif" style="font-size:26px;color:var(--cream);font-weight:900">${p.name}</div>
       <div class="muted mini">Handicap ${p.hcp} · ${st.rounds} round${st.rounds!==1?'s':''} · ${st.holes} holes played</div>
@@ -1494,6 +1999,24 @@ function Profile(){
   bc.appendChild(ringRow);
   w.appendChild(bc);
 
+  // ---- accuracy: fairways & greens in regulation ----
+  if(st.firElig>0 || st.girElig>0){
+    const ac=el("div","card");
+    ac.innerHTML=`<div class="eyebrow">Accuracy</div>`;
+    const g=el("div");g.style.cssText="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px";
+    const stat=(label,pct,hit,elig,sub)=>{
+      const box=el("div","card tight");box.style.cssText="margin:0;text-align:center;padding:14px";
+      box.innerHTML=`<div class="serif" style="font-size:32px;font-weight:900;color:var(--lime)">${pct!=null?pct+'%':'–'}</div>
+        <div class="mini" style="font-weight:700;margin-top:2px">${label}</div>
+        <div class="mini muted">${elig?hit+' of '+elig+' '+sub:'no data yet'}</div>`;
+      return box;
+    };
+    g.appendChild(stat("Fairways",st.firPct,st.firHit,st.firElig,"fairways"));
+    g.appendChild(stat("Greens in reg",st.girPct,st.girHit,st.girElig,"greens"));
+    ac.appendChild(g);
+    w.appendChild(ac);
+  }
+
   // ---- net score trend sparkline ----
   if(st.trend.length>=2){
     const tc=el("div","card");
@@ -1517,7 +2040,7 @@ function Profile(){
       const winpc=tot?Math.round(rec.w/tot*100):0;
       const row=el("div","lbrow");
       const verdict=rec.w>rec.l?`<span style="color:var(--lime)">leads</span>`:rec.w<rec.l?`<span style="color:var(--clay)">trails</span>`:`level`;
-      row.innerHTML=`<div class="av" style="background:${o.color};width:34px;height:34px;font-size:13px">${initials(o.name)}</div>
+      row.innerHTML=`${avatarHTML(o,34)}
         <div style="flex:1"><div style="font-weight:600">vs ${o.name.split(' ')[0]} · ${verdict}</div>
         <div class="muted mini">${rec.w}W ${rec.l}L${rec.h?' '+rec.h+'H':''} · ${winpc}% wins</div></div>
         <div class="serif" style="font-size:18px;font-weight:900;color:${rec.w>=rec.l?'var(--lime)':'var(--clay)'}">${rec.w}–${rec.l}</div>`;
