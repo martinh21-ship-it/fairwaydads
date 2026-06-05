@@ -621,6 +621,7 @@ function render(){
     else if(S.tab==="gps") v.appendChild(GPSView());
     else if(S.tab==="board") v.appendChild(Board());
     else if(S.tab==="dads") v.appendChild(Dads());
+    else if(S.tab==="profile") v.appendChild(Profile());
     app.appendChild(v);
     app.appendChild(Nav());
     if(S.tab==="gps") setTimeout(initMap,60);
@@ -883,6 +884,10 @@ function Dads(){
     hcpI.onblur=()=>{cloudUpdatePlayer(p).catch(()=>{});save();};
     edit.appendChild(nameI);edit.appendChild(hcpI);
     c.appendChild(edit);
+    const statsBtn=el("button","btn btn-ghost btn-sm","📊 View stats & profile");
+    statsBtn.style.cssText="width:100%;margin-top:10px";
+    statsBtn.onclick=()=>{S.profileId=p.id;S.tab="profile";render();};
+    c.appendChild(statsBtn);
     const d=el("button","del","Remove dad");
     d.onclick=()=>{if(confirm(`Remove ${p.name}?`)){
       cloudDeletePlayer(p.id).catch(()=>{});
@@ -1261,6 +1266,115 @@ function computeSummary(r){
   return{type:"stroke",text:`${win.name} — net ${sorted[0].net}`,winners:[sorted[0].id],table:sorted};
 }
 
+// =================== STATS ENGINE ===================
+// All computed from recorded rounds. A "round" has course, holes, nine, scores{pid:{holeNo:gross}}.
+function allRounds(){ return S.rounds.filter(r=>r.done!==false); }
+
+// every (hole, gross, par, si, course, date) a player has recorded
+function playerHoles(pid){
+  const out=[];
+  allRounds().forEach(r=>{
+    const holes=holesInPlayFor(r);
+    holes.forEach(h=>{
+      const g=r.scores?.[pid]?.[h.n];
+      if(g){out.push({gross:g,par:h.par,si:h.si,n:h.n,name:h.name,course:r.course,date:r.date,roundId:r.id});}
+    });
+  });
+  return out;
+}
+// version of holesInPlay that works on stored rounds (course key may differ)
+function holesInPlayFor(r){
+  const c=COURSES[r.course]; if(!c)return [];
+  if(r.holes===9) return r.nine==="back"?c.holes.slice(9,18):c.holes.slice(0,9);
+  return c.holes;
+}
+
+function playerStats(pid){
+  const hs=playerHoles(pid);
+  const s={played:0,eagles:0,birdies:0,pars:0,bogeys:0,doubles:0,others:0,
+           holes:hs.length, rounds:new Set(hs.map(h=>h.roundId)).size,
+           bestHole:null, worstHole:null, longestBirdieStreak:0, vsPar:0};
+  let streak=0;
+  hs.forEach(h=>{
+    const d=h.gross-h.par; s.vsPar+=d;
+    if(d<=-2)s.eagles++; else if(d===-1)s.birdies++; else if(d===0)s.pars++;
+    else if(d===1)s.bogeys++; else if(d===2)s.doubles++; else s.others++;
+    if(d<=-1){streak++; s.longestBirdieStreak=Math.max(s.longestBirdieStreak,streak);} else streak=0;
+    if(!s.bestHole||d<s.bestHole.d)s.bestHole={d,h};
+    if(!s.worstHole||d>s.worstHole.d)s.worstHole={d,h};
+  });
+  // nemesis hole: highest avg-over-par among holes played >=2 times
+  const byHole={};
+  hs.forEach(h=>{const k=h.course+"#"+h.n;(byHole[k]=byHole[k]||{tot:0,n:0,ref:h}).tot+=(h.gross-h.par);byHole[k].n++;});
+  let nem=null;
+  Object.values(byHole).forEach(o=>{if(o.n>=2){const avg=o.tot/o.n;if(!nem||avg>nem.avg)nem={avg,h:o.ref,n:o.n};}});
+  s.nemesis=nem;
+  // net scoring trend per round (for sparkline)
+  s.trend=allRounds().filter(r=>r.players.includes(pid)).map(r=>({date:r.date,net:netTotalFor(r,pid)})).filter(x=>x.net>0);
+  return s;
+}
+
+// net total that works on stored rounds
+function netTotalFor(r,pid){
+  const p=S.players.find(x=>x.id===pid); if(!p)return 0;
+  const frac=r.holes===9?0.5:1; const ph=Math.round(p.hcp*frac);
+  const holes=holesInPlayFor(r); let net=0,any=false;
+  holes.forEach(h=>{const v=r.scores?.[pid]?.[h.n];if(v){any=true;net+=v-strokesOnHole(ph,h.si);}});
+  return any?net:0;
+}
+
+// head-to-head: for each round both played, who had the lower net
+function headToHead(pid){
+  const recs={};
+  allRounds().forEach(r=>{
+    if(!r.players.includes(pid))return;
+    const myNet=netTotalFor(r,pid); if(!myNet)return;
+    r.players.forEach(oid=>{
+      if(oid===pid)return;
+      const oNet=netTotalFor(r,oid); if(!oNet)return;
+      const rec=recs[oid]=recs[oid]||{w:0,l:0,h:0};
+      if(myNet<oNet)rec.w++; else if(myNet>oNet)rec.l++; else rec.h++;
+    });
+  });
+  return recs;
+}
+
+// course records: lowest net on each hole across the whole group
+function courseRecordsHeldBy(pid){
+  const best={}; // key course#hole -> {net,pid}
+  allRounds().forEach(r=>{
+    const p=h=>{const pl=S.players.find(x=>x.id);};
+    holesInPlayFor(r).forEach(h=>{
+      r.players.forEach(plid=>{
+        const g=r.scores?.[plid]?.[h.n]; if(!g)return;
+        const pl=S.players.find(x=>x.id===plid); if(!pl)return;
+        const frac=r.holes===9?0.5:1; const ph=Math.round(pl.hcp*frac);
+        const net=g-strokesOnHole(ph,h.si);
+        const k=r.course+"#"+h.n;
+        if(!best[k]||net<best[k].net){best[k]={net,pid:plid,name:h.name,course:r.course,n:h.n};}
+      });
+    });
+  });
+  return Object.values(best).filter(b=>b.pid===pid);
+}
+
+// daft awards across the whole group -> who holds each
+function groupAwards(){
+  const stats={}; S.players.forEach(p=>stats[p.id]=playerStats(p.id));
+  function leader(metric,min=1){
+    let best=null;
+    S.players.forEach(p=>{const v=metric(stats[p.id]);if(v>=min&&(!best||v>best.v))best={pid:p.id,v};});
+    return best;
+  }
+  return {
+    mostBirdies: leader(s=>s.birdies),
+    mostEagles:  leader(s=>s.eagles),
+    longestStreak: leader(s=>s.longestBirdieStreak,2),
+    mostPars:    leader(s=>s.pars),
+    biggestBlowup: (()=>{let best=null;S.players.forEach(p=>{const w=stats[p.id].worstHole;if(w&&w.d>0&&(!best||w.d>best.v))best={pid:p.id,v:w.d,h:w.h};});return best;})()
+  };
+}
+
 // ---------- BOARD ----------
 function seasonStandings(){
   const map={};
@@ -1316,6 +1430,169 @@ function Board(){
   });
   S.justFinished=null;
   return w;
+}
+
+// ---------- PROFILE (per-dad stats) ----------
+function Profile(){
+  const p=S.players.find(x=>x.id===S.profileId);
+  const w=el("div");
+  if(!p){const e=el("div","card center","Pick a dad from the Dads tab.");w.appendChild(e);return w;}
+  const st=playerStats(p.id);
+  const awards=groupAwards();
+
+  // back + header
+  const back=el("button","del","◂ All dads");back.onclick=()=>{S.tab="dads";render();};
+  w.appendChild(back);
+  const head=el("div","card");
+  head.style.background=`linear-gradient(150deg, ${p.color}22, var(--green-700))`;
+  head.innerHTML=`<div class="row">
+    <div class="av" style="background:${p.color};width:60px;height:60px;font-size:24px">${initials(p.name)}</div>
+    <div style="flex:1">
+      <div class="serif" style="font-size:26px;color:var(--cream);font-weight:900">${p.name}</div>
+      <div class="muted mini">Handicap ${p.hcp} · ${st.rounds} round${st.rounds!==1?'s':''} · ${st.holes} holes played</div>
+    </div></div>`;
+  w.appendChild(head);
+
+  if(st.holes===0){
+    w.appendChild(el("div","card empty",`<div class="ico">📊</div>No stats yet — play a round and ${p.name.split(' ')[0]}'s profile fills up.`));
+    return w;
+  }
+
+  // ---- award badges this dad holds ----
+  const myAwards=[];
+  if(awards.mostBirdies?.pid===p.id)myAwards.push(["🐦","Birdie Machine",`${awards.mostBirdies.v} birdies`]);
+  if(awards.mostEagles?.pid===p.id)myAwards.push(["🦅","Eagle Eye",`${awards.mostEagles.v} eagle${awards.mostEagles.v!==1?'s':''}`]);
+  if(awards.longestStreak?.pid===p.id)myAwards.push(["🔥","On Fire",`${awards.longestStreak.v} in a row`]);
+  if(awards.mostPars?.pid===p.id)myAwards.push(["🎯","Mr Consistent",`${awards.mostPars.v} pars`]);
+  if(awards.biggestBlowup?.pid===p.id)myAwards.push(["💣","Snowman Award",`+${awards.biggestBlowup.v} on a hole`]);
+  if(myAwards.length){
+    const ac=el("div","card");
+    ac.innerHTML=`<div class="eyebrow">Badges</div>`;
+    const row=el("div","scroll-x");row.style.marginTop="6px";
+    myAwards.forEach(([ico,title,sub])=>{
+      const b=el("div","matchcard card tight");b.style.width="150px";b.style.flex="none";b.style.margin="0";
+      b.innerHTML=`<div style="font-size:30px">${ico}</div><div style="font-weight:700;margin-top:4px">${title}</div><div class="mini muted">${sub}</div>`;
+      row.appendChild(b);
+    });
+    ac.appendChild(row);
+    w.appendChild(ac);
+  }
+
+  // ---- scoring breakdown: counters + ring ----
+  const bc=el("div","card");
+  bc.innerHTML=`<div class="eyebrow">Scoring breakdown</div>`;
+  const ringRow=el("div","row");ringRow.style.gap="16px";ringRow.style.marginTop="8px";
+  ringRow.appendChild(breakdownRing(st));
+  const counts=el("div");counts.style.flex="1";
+  const rows=[["Eagles",st.eagles,"var(--gold)"],["Birdies",st.birdies,"var(--clay)"],
+    ["Pars",st.pars,"var(--cream)"],["Bogeys",st.bogeys,"var(--cream-dim)"],
+    ["Doubles+",st.doubles+st.others,"var(--clay)"]];
+  rows.forEach(([l,v,c])=>{
+    counts.appendChild(el("div","row between",`<span class="mini"><span class="dot" style="background:${c}"></span>${l}</span><span class="serif" style="font-weight:900;color:${c}">${v}</span>`));
+  });
+  ringRow.appendChild(counts);
+  bc.appendChild(ringRow);
+  w.appendChild(bc);
+
+  // ---- net score trend sparkline ----
+  if(st.trend.length>=2){
+    const tc=el("div","card");
+    tc.innerHTML=`<div class="eyebrow">Net score trend · last ${st.trend.length} rounds</div>`;
+    tc.appendChild(sparkline(st.trend.map(t=>t.net)));
+    const first=st.trend[0].net,last=st.trend[st.trend.length-1].net;
+    const better=last<first;
+    tc.appendChild(el("div","mini muted",`<span style="color:${better?'var(--lime)':'var(--clay)'}">${better?'▼ trending lower (better)':'▲ trending higher'}</span> · best net ${Math.min(...st.trend.map(t=>t.net))}`));
+    w.appendChild(tc);
+  }
+
+  // ---- head to head ----
+  const h2h=headToHead(p.id);
+  const oppIds=Object.keys(h2h);
+  if(oppIds.length){
+    const hc=el("div","card");
+    hc.innerHTML=`<div class="eyebrow">Head to head · net per round</div>`;
+    oppIds.forEach(oid=>{
+      const o=S.players.find(x=>x.id===oid);if(!o)return;
+      const rec=h2h[oid];const tot=rec.w+rec.l+rec.h;
+      const winpc=tot?Math.round(rec.w/tot*100):0;
+      const row=el("div","lbrow");
+      const verdict=rec.w>rec.l?`<span style="color:var(--lime)">leads</span>`:rec.w<rec.l?`<span style="color:var(--clay)">trails</span>`:`level`;
+      row.innerHTML=`<div class="av" style="background:${o.color};width:34px;height:34px;font-size:13px">${initials(o.name)}</div>
+        <div style="flex:1"><div style="font-weight:600">vs ${o.name.split(' ')[0]} · ${verdict}</div>
+        <div class="muted mini">${rec.w}W ${rec.l}L${rec.h?' '+rec.h+'H':''} · ${winpc}% wins</div></div>
+        <div class="serif" style="font-size:18px;font-weight:900;color:${rec.w>=rec.l?'var(--lime)':'var(--clay)'}">${rec.w}–${rec.l}</div>`;
+      hc.appendChild(row);
+    });
+    w.appendChild(hc);
+  }
+
+  // ---- nemesis hole + best hole ----
+  const nc=el("div","card");
+  nc.innerHTML=`<div class="eyebrow">Signature holes</div>`;
+  if(st.bestHole){
+    const h=st.bestHole.h;const lbl=st.bestHole.d<=-2?"Eagle or better":st.bestHole.d===-1?"Birdie":"Best vs par";
+    nc.appendChild(el("div","row between",`<span class="mini">🌟 Best: <b>${h.name}</b> <span class="muted">(${COURSES[h.course].short} ${h.n})</span></span><span style="color:var(--lime);font-weight:700">${fmtVsPar(st.bestHole.d)}</span>`));
+  }
+  if(st.nemesis){
+    const h=st.nemesis.h;
+    nc.appendChild(el("div","row between",`<span class="mini">😤 Nemesis: <b>${h.name}</b> <span class="muted">(${COURSES[h.course].short} ${h.n})</span></span><span style="color:var(--clay);font-weight:700">+${st.nemesis.avg.toFixed(1)}/rd</span>`));
+    nc.appendChild(el("div","mini muted",`Averages ${st.nemesis.avg>0?'+':''}${st.nemesis.avg.toFixed(1)} vs par there over ${st.nemesis.n} plays. There's your ammunition. 🎯`));
+  }
+  w.appendChild(nc);
+
+  // ---- course records held ----
+  const recs=courseRecordsHeldBy(p.id);
+  if(recs.length){
+    const rc=el("div","card");
+    rc.innerHTML=`<div class="eyebrow">🏆 Course records held · ${recs.length}</div>`;
+    recs.slice(0,8).forEach(r=>{
+      rc.appendChild(el("div","row between",`<span class="mini"><b>${r.name}</b> <span class="muted">${COURSES[r.course].short} ${r.n}</span></span><span style="color:var(--gold);font-weight:700">net ${r.net}</span>`));
+    });
+    if(recs.length>8)rc.appendChild(el("div","mini muted",`+${recs.length-8} more`));
+    w.appendChild(rc);
+  }
+
+  return w;
+}
+function fmtVsPar(d){return d===0?"E":d>0?"+"+d:""+d;}
+
+// donut ring of score distribution
+function breakdownRing(st){
+  const segs=[[st.eagles,"var(--gold)"],[st.birdies,"var(--clay)"],[st.pars,"#f5f0e1"],
+    [st.bogeys,"#8a9a8e"],[st.doubles+st.others,"#5a3a2a"]];
+  const total=segs.reduce((a,s)=>a+s[0],0)||1;
+  const R=42,C=2*Math.PI*R;let off=0;
+  let circles="";
+  segs.forEach(([v,col])=>{
+    if(v<=0)return;
+    const len=v/total*C;
+    circles+=`<circle cx="50" cy="50" r="${R}" fill="none" stroke="${col}" stroke-width="14"
+      stroke-dasharray="${len} ${C-len}" stroke-dashoffset="${-off}" transform="rotate(-90 50 50)"/>`;
+    off+=len;
+  });
+  const wrap=el("div");wrap.style.flex="none";
+  wrap.innerHTML=`<svg width="104" height="104" viewBox="0 0 100 100">${circles}
+    <text x="50" y="46" text-anchor="middle" fill="#f5f0e1" font-size="20" font-weight="800" font-family="Fraunces">${st.holes}</text>
+    <text x="50" y="62" text-anchor="middle" fill="#9bc234" font-size="9" letter-spacing="1">HOLES</text></svg>`;
+  return wrap;
+}
+
+// simple sparkline; lower is better so we don't invert
+function sparkline(vals){
+  const wd=300,ht=70,pad=8;
+  const min=Math.min(...vals),max=Math.max(...vals),rng=(max-min)||1;
+  const pts=vals.map((v,i)=>{
+    const x=pad+(i/(vals.length-1))*(wd-2*pad);
+    const y=pad+( (v-min)/rng )*(ht-2*pad); // higher score lower on chart
+    return [x,y];
+  });
+  const path=pts.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' ');
+  const dots=pts.map(p=>`<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="2.5" fill="var(--lime)"/>`).join('');
+  const wrap=el("div");wrap.style.marginTop="8px";
+  wrap.innerHTML=`<svg width="100%" viewBox="0 0 ${wd} ${ht}" preserveAspectRatio="none" style="display:block">
+    <path d="${path}" fill="none" stroke="var(--lime)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    ${dots}</svg>`;
+  return wrap;
 }
 
 // ---------- GPS ----------
