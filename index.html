@@ -1,0 +1,1200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0a2818">
+<title>Fairway Dads</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700;9..144,900&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+:root{
+  --green-900:#06180f; --green-800:#0a2818; --green-700:#0f3622;
+  --green-600:#16512f; --green-500:#1f7a42; --green-400:#34a35a;
+  --lime:#c8f04a; --lime-dim:#9bc234;
+  --cream:#f5f0e1; --cream-dim:#d8d2bf;
+  --gold:#e8b84b; --clay:#c2643c; --sky:#7fc3d6;
+  --ink:#0b140f; --paper:#fbf8ef;
+  --shadow:0 10px 40px -12px rgba(0,0,0,.55);
+  --r:18px;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{
+  font-family:'Outfit',sans-serif;background:var(--green-900);color:var(--cream);
+  overflow-x:hidden;-webkit-font-smoothing:antialiased;
+}
+#app{max-width:520px;margin:0 auto;min-height:100vh;position:relative;
+  background:
+    radial-gradient(120% 80% at 50% -10%, var(--green-700) 0%, var(--green-800) 40%, var(--green-900) 100%);
+  padding-bottom:90px;overflow:hidden}
+.grain:before{content:"";position:fixed;inset:0;pointer-events:none;z-index:9999;opacity:.04;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+
+/* Typography */
+.display{font-family:'Fraunces',serif;font-weight:900;letter-spacing:-.02em;line-height:.95}
+.serif{font-family:'Fraunces',serif}
+h1,h2,h3{font-family:'Fraunces',serif;font-weight:700;letter-spacing:-.01em}
+
+/* Header */
+.topbar{position:sticky;top:0;z-index:50;padding:16px 18px 14px;
+  background:linear-gradient(180deg, var(--green-800) 60%, transparent);
+  display:flex;align-items:center;justify-content:space-between;
+  padding-top:calc(16px + env(safe-area-inset-top))}
+.brand{display:flex;align-items:center;gap:10px}
+.brand .flag{width:30px;height:30px;flex:none}
+.brand h1{font-size:21px;color:var(--cream)}
+.brand h1 span{color:var(--lime)}
+.brand-sub{font-size:10px;letter-spacing:.22em;text-transform:uppercase;color:var(--lime-dim);font-weight:600;margin-top:-2px}
+
+.view{padding:6px 18px 0;animation:fade .4s ease}
+@keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+/* Cards */
+.card{background:linear-gradient(160deg, rgba(255,255,255,.055), rgba(255,255,255,.02));
+  border:1px solid rgba(255,255,255,.08);border-radius:var(--r);padding:18px;
+  backdrop-filter:blur(6px);box-shadow:var(--shadow);margin-bottom:14px}
+.card.tight{padding:14px}
+
+/* Buttons */
+.btn{font-family:'Outfit';font-weight:700;font-size:16px;border:none;border-radius:14px;
+  padding:15px 18px;width:100%;cursor:pointer;transition:transform .12s, filter .2s;
+  display:flex;align-items:center;justify-content:center;gap:9px}
+.btn:active{transform:scale(.97)}
+.btn-primary{background:linear-gradient(135deg,var(--lime),var(--lime-dim));color:var(--green-900)}
+.btn-ghost{background:rgba(255,255,255,.06);color:var(--cream);border:1px solid rgba(255,255,255,.12)}
+.btn-gold{background:linear-gradient(135deg,var(--gold),#c99a32);color:var(--green-900)}
+.btn-sm{padding:10px 14px;font-size:14px;width:auto;border-radius:11px}
+.btn-row{display:flex;gap:10px}
+
+/* Inputs */
+input,select{font-family:'Outfit';font-size:16px;width:100%;padding:13px 14px;border-radius:12px;
+  background:rgba(0,0,0,.25);border:1px solid rgba(255,255,255,.13);color:var(--cream);outline:none}
+input:focus,select:focus{border-color:var(--lime)}
+select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%23c8f04a'%3E%3Cpath d='M6 9L1 3h10z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 14px center;padding-right:36px}
+label{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--cream-dim);font-weight:600;display:block;margin-bottom:6px}
+.field{margin-bottom:13px}
+
+/* Section label */
+.eyebrow{font-size:11px;letter-spacing:.24em;text-transform:uppercase;color:var(--lime-dim);font-weight:700;margin-bottom:4px}
+.bigtitle{font-size:30px;color:var(--cream);margin-bottom:14px}
+.bigtitle em{font-style:italic;color:var(--lime)}
+
+/* Bottom nav */
+.nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:520px;z-index:100;
+  display:flex;justify-content:space-around;align-items:center;
+  padding:10px 8px calc(10px + env(safe-area-inset-bottom));
+  background:linear-gradient(0deg, var(--green-900) 70%, transparent);
+  backdrop-filter:blur(10px)}
+.nav button{background:none;border:none;color:var(--cream-dim);font-family:'Outfit';font-weight:600;
+  font-size:10px;letter-spacing:.04em;display:flex;flex-direction:column;align-items:center;gap:4px;
+  padding:6px 10px;cursor:pointer;border-radius:12px;transition:.2s}
+.nav button svg{width:23px;height:23px;stroke-width:2}
+.nav button.active{color:var(--lime)}
+.nav button.active svg{filter:drop-shadow(0 0 8px rgba(200,240,74,.5))}
+
+/* Pills / chips */
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+.chip{padding:9px 15px;border-radius:30px;font-size:13px;font-weight:600;cursor:pointer;
+  background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);color:var(--cream-dim);transition:.18s}
+.chip.on{background:var(--lime);color:var(--green-900);border-color:var(--lime)}
+
+/* Player avatar */
+.av{width:38px;height:38px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;
+  font-weight:800;font-size:15px;color:var(--green-900);font-family:'Outfit'}
+
+/* Leaderboard rows */
+.lbrow{display:flex;align-items:center;gap:13px;padding:12px 4px;border-bottom:1px solid rgba(255,255,255,.07)}
+.lbrow:last-child{border-bottom:none}
+.rank{font-family:'Fraunces';font-weight:900;font-size:22px;width:30px;text-align:center;color:var(--cream-dim)}
+.rank.r1{color:var(--gold)} .rank.r2{color:#cdd3d6} .rank.r3{color:var(--clay)}
+
+/* Scorecard grid */
+.scorewrap{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -18px;padding:0 18px}
+table.sc{border-collapse:collapse;width:100%;font-size:13px}
+table.sc th,table.sc td{padding:8px 6px;text-align:center;white-space:nowrap}
+table.sc thead th{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--lime-dim);font-weight:700;border-bottom:1px solid rgba(255,255,255,.14)}
+table.sc .hname{text-align:left;font-weight:600;color:var(--cream)}
+table.sc td.par{color:var(--cream-dim);font-size:11px}
+table.sc tr.tot td{border-top:1px solid rgba(255,255,255,.18);font-weight:800;color:var(--lime);padding-top:10px}
+
+/* score badges */
+.sb{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:8px;font-weight:700}
+.sb.eagle{background:var(--gold);color:#3a2a00}
+.sb.birdie{background:var(--clay);color:#fff;border-radius:50%}
+.sb.par{color:var(--cream)}
+.sb.bogey{border:1px solid rgba(255,255,255,.3)}
+.sb.dbl{border:2px solid var(--clay);color:var(--clay)}
+
+/* Hole player big tiles */
+.holehead{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:6px}
+.holenum{font-family:'Fraunces';font-weight:900;font-size:54px;line-height:.8;color:var(--lime)}
+.holemeta{text-align:right}
+.holemeta .nm{font-family:'Fraunces';font-style:italic;font-size:19px;color:var(--cream)}
+.holemeta .pr{font-size:13px;color:var(--cream-dim);font-weight:600}
+
+.pscore{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  background:rgba(0,0,0,.22);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:10px 12px;margin-bottom:9px}
+.pscore .nmblock{flex:1;min-width:0}
+.pscore .pn{font-weight:700;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pscore .sub{font-size:11px;color:var(--cream-dim)}
+.stepper{display:flex;align-items:center;gap:0;background:rgba(0,0,0,.3);border-radius:12px;overflow:hidden;flex:none}
+.stepper button{width:40px;height:44px;border:none;background:none;color:var(--lime);font-size:24px;font-weight:700;cursor:pointer}
+.stepper button:active{background:rgba(255,255,255,.08)}
+.stepper .val{width:42px;text-align:center;font-family:'Fraunces';font-weight:900;font-size:24px;color:var(--cream)}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--lime);display:inline-block;margin-right:3px}
+
+/* GPS */
+#map{height:300px;border-radius:var(--r);overflow:hidden;border:1px solid rgba(255,255,255,.12);margin-bottom:12px}
+.leaflet-container{background:#0a2818;font-family:'Outfit'}
+.yard-big{font-family:'Fraunces';font-weight:900;font-size:46px;color:var(--lime);line-height:1}
+.yard-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;text-align:center}
+.yard-grid .yc{background:rgba(0,0,0,.22);border-radius:13px;padding:12px 6px;border:1px solid rgba(255,255,255,.08)}
+.yard-grid .yc .n{font-family:'Fraunces';font-weight:900;font-size:26px;color:var(--cream)}
+.yard-grid .yc .l{font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--cream-dim);font-weight:700;margin-top:2px}
+.yard-grid .yc.mid .n{color:var(--lime)}
+
+/* misc */
+.muted{color:var(--cream-dim)}
+.center{text-align:center}
+.row{display:flex;align-items:center;gap:10px}
+.between{justify-content:space-between}
+.divider{height:1px;background:rgba(255,255,255,.08);margin:14px 0}
+.tag{display:inline-block;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:.04em}
+.tag.live{background:var(--clay);color:#fff;animation:pulse 1.8s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.55}}
+.empty{text-align:center;padding:34px 14px;color:var(--cream-dim)}
+.empty .ico{font-size:40px;margin-bottom:10px;opacity:.6}
+.banter{font-style:italic;font-family:'Fraunces';color:var(--gold);font-size:14px}
+.toast{position:fixed;bottom:100px;left:50%;transform:translateX(-50%);z-index:300;
+  background:var(--lime);color:var(--green-900);padding:12px 20px;border-radius:30px;font-weight:700;
+  box-shadow:var(--shadow);animation:toast 2.4s ease forwards;max-width:90%;text-align:center}
+@keyframes toast{0%{opacity:0;transform:translateX(-50%) translateY(14px)}10%,80%{opacity:1;transform:translateX(-50%)}100%{opacity:0}}
+.del{color:var(--clay);background:none;border:none;font-size:13px;font-weight:600;cursor:pointer;padding:4px}
+.hidden{display:none}
+.flag-emoji{font-size:15px}
+.mini{font-size:11px}
+.scroll-x{display:flex;gap:8px;overflow-x:auto;margin:0 -18px;padding:2px 18px 8px;-webkit-overflow-scrolling:touch}
+.matchcard{flex:none;width:230px}
+</style>
+</head>
+<body class="grain">
+<div id="app"></div>
+<script>
+/* ============================================================
+   FAIRWAY DADS — Hilton Park golf tracker
+   Course data sourced from official Hilton Park scorecards
+   (Yellow tees). Pins are approximate — use "Set pin from
+   here" on each green to lock GPS accuracy.
+   ============================================================ */
+
+// ---- COURSE DATA (Yellow tees) ----
+const COURSES = {
+  hilton: {
+    name:"Hilton Course",
+    short:"Hilton",
+    par:69,
+    centre:[55.9685,-4.3460],
+    holes:[
+      {n:1, name:"Craigenguan", yards:482, par:4, si:13},
+      {n:2, name:"Burnside",    yards:384, par:4, si:7},
+      {n:3, name:"Craigton",    yards:401, par:4, si:3},
+      {n:4, name:"Laighpark",   yards:172, par:3, si:17},
+      {n:5, name:"Milngavie",   yards:413, par:4, si:1},
+      {n:6, name:"Khyber Pass", yards:216, par:3, si:9},
+      {n:7, name:"Allander",    yards:294, par:4, si:15},
+      {n:8, name:"Craigallion", yards:341, par:4, si:5},
+      {n:9, name:"Ben Lomond",  yards:309, par:4, si:11},
+      {n:10,name:"St Mungo",    yards:341, par:4, si:12},
+      {n:11,name:"Dumgoyne",    yards:369, par:4, si:4},
+      {n:12,name:"Deil's Dozen",yards:154, par:3, si:18},
+      {n:13,name:"Drumclog",    yards:411, par:4, si:2},
+      {n:14,name:"Mugdock",     yards:322, par:4, si:14},
+      {n:15,name:"Tambowie",    yards:356, par:4, si:6},
+      {n:16,name:"Auldmarroch", yards:489, par:5, si:8},
+      {n:17,name:"Muckle Drap", yards:184, par:3, si:16},
+      {n:18,name:"Hilton",      yards:364, par:4, si:10}
+    ]
+  },
+  allander: {
+    name:"Allander Course",
+    short:"Allander",
+    par:69,
+    centre:[55.9700,-4.3490],
+    holes:[
+      {n:1, name:"Mount Zion",    yards:361, par:4, si:9},
+      {n:2, name:"Auchegillan",   yards:287, par:4, si:11},
+      {n:3, name:"Craigallion",   yards:544, par:5, si:3},
+      {n:4, name:"Fickle",        yards:181, par:3, si:15},
+      {n:5, name:"Burncrooks",    yards:372, par:4, si:1},
+      {n:6, name:"Hog-Hill",      yards:268, par:4, si:13},
+      {n:7, name:"Tak-me-doon",   yards:156, par:3, si:17},
+      {n:8, name:"Drystane Dyke", yards:313, par:4, si:7},
+      {n:9, name:"Halfway",       yards:306, par:4, si:5},
+      {n:10,name:"Stockiemuir",   yards:156, par:3, si:18},
+      {n:11,name:"Carbeth",       yards:526, par:5, si:2},
+      {n:12,name:"Earl's Seat",   yards:282, par:4, si:12},
+      {n:13,name:"Geordie's Braes",yards:381,par:4, si:4},
+      {n:14,name:"Garvel Bridge", yards:334, par:4, si:8},
+      {n:15,name:"March Burn",    yards:169, par:3, si:16},
+      {n:16,name:"Jennie's Lum",  yards:324, par:4, si:6},
+      {n:17,name:"Forest Glade",  yards:159, par:3, si:14},
+      {n:18,name:"Catythirsty",   yards:327, par:4, si:10}
+    ]
+  }
+};
+
+const AVATAR_COLORS=["#c8f04a","#e8b84b","#7fc3d6","#c2643c","#34a35a","#d98cb3","#9b8cff","#f0a35e","#6fd3c0","#e07a7a","#86b1f0","#cdd3d6"];
+const BANTER=[
+ "Wallet out, loser buys the bacon rolls.",
+ "That's going in the group chat.",
+ "Sandbagger alert. 🚨",
+ "Vintage choke on the back nine.",
+ "Someone's been practising in secret.",
+ "Handicap committee has been notified.",
+ "Pure dinner-party material, that.",
+ "The Campsies witnessed greatness today.",
+ "Bell-ringing optional, bragging mandatory.",
+ "Ben Lomond approves."
+];
+
+// =================== STATE ===================
+let CAN_STORE=false;
+try{const k="__fd_test";localStorage.setItem(k,"1");localStorage.removeItem(k);CAN_STORE=true;}catch(e){CAN_STORE=false;}
+
+let S = load();
+function load(){
+  if(CAN_STORE){
+    try{const raw=localStorage.getItem("fairwayDads");if(raw){const d=JSON.parse(raw);d.tab="home";return d;}}catch(e){}
+  }
+  if(window.__FD) return window.__FD;
+  window.__FD = {
+    players:[{id:1,name:"Martin",hcp:14,color:AVATAR_COLORS[0]}],
+    rounds:[], active:null, tab:"home", setup:{}
+  };
+  return window.__FD;
+}
+function persist(){
+  // strip live green pins back into COURSES is handled separately; save core state
+  if(CAN_STORE){
+    try{localStorage.setItem("fairwayDads",JSON.stringify({
+      players:S.players, rounds:S.rounds, active:S.active, tab:"home", setup:{}
+    }));}catch(e){}
+  }
+}
+function save(){ persist(); render(); }
+
+// =================== HELPERS ===================
+const $=(s,r=document)=>r.querySelector(s);
+const el=(t,c,h)=>{const e=document.createElement(t);if(c)e.className=c;if(h!=null)e.innerHTML=h;return e;};
+const initials=n=>n.trim().split(/\s+/).map(w=>w[0]).join("").slice(0,2).toUpperCase()||"?";
+const uid=()=>Date.now()+Math.floor(Math.random()*999);
+function toast(m){const t=el("div","toast",m);document.body.appendChild(t);setTimeout(()=>t.remove(),2400);}
+
+// Course handicap for a number of holes. WHS-style proportional to holes played.
+// Strokes received on a hole given a player's playing handicap (full diff already applied by caller).
+function strokesOnHole(playingHcp, si, holesCount){
+  // si runs 1..18. For 9-hole games we still use the 18-hole SI ranking
+  // but only the holes in play matter; allocate by SI across 18.
+  if(playingHcp<=0){
+    // negative (better than scratch): give strokes back on hardest holes
+    const give=Math.min(Math.abs(playingHcp),18);
+    return (si> (18-give))? -1*( /*one shot back*/1):0;
+  }
+  let s=0;
+  if(si<=playingHcp) s+=1;
+  if(si<=playingHcp-18) s+=1; // for very high handicaps
+  return s;
+}
+
+// net = gross - strokes
+function netScore(gross, playingHcp, si){
+  if(gross==null) return null;
+  return gross - strokesOnHole(playingHcp, si, 0);
+}
+
+function holesInPlay(round){
+  const c=COURSES[round.course];
+  if(round.holes===9){
+    return round.nine==="back" ? c.holes.slice(9,18) : c.holes.slice(0,9);
+  }
+  return c.holes;
+}
+
+// playing handicap proportioned to holes played, relative to lowest in group (match/skins use full diff usually,
+// but for a casual mixed group we use 95% allowance, common for societies). We'll use full course-hcp for net stroke,
+// and full difference for match/skins.
+function playingHcp(player, round){
+  const base = player.hcp;
+  const frac = round.holes===9 ? 0.5 : 1;
+  return Math.round(base*frac);
+}
+
+function gross(round, pid){
+  const h=holesInPlay(round);
+  return h.reduce((a,hole)=>{const v=round.scores[pid]?.[hole.n];return a+(v||0);},0);
+}
+function grossThru(round, pid){
+  const h=holesInPlay(round);
+  let total=0,thru=0;
+  h.forEach(hole=>{const v=round.scores[pid]?.[hole.n];if(v){total+=v;thru++;}});
+  return {total,thru};
+}
+function netTotal(round, pid){
+  const p=S.players.find(x=>x.id===pid);
+  const ph=playingHcp(p,round);
+  const h=holesInPlay(round);
+  let net=0;
+  h.forEach(hole=>{
+    const v=round.scores[pid]?.[hole.n];
+    if(v) net += v - strokesOnHole(ph,hole.si);
+  });
+  return net;
+}
+
+// MATCH PLAY (singles): holes up/down between two players using net (handicap diff applied to higher hcp)
+function matchPlayResult(round, aId, bId){
+  const A=S.players.find(p=>p.id===aId), B=S.players.find(p=>p.id===bId);
+  const phA=playingHcp(A,round), phB=playingHcp(B,round);
+  const diff=phA-phB; // strokes given between the two
+  const h=holesInPlay(round);
+  let state=0; // + means A up
+  let lastDecided=0;
+  h.forEach(hole=>{
+    const ga=round.scores[aId]?.[hole.n], gb=round.scores[bId]?.[hole.n];
+    if(!ga||!gb) return;
+    // allocate diff strokes to the higher handicapper
+    let na=ga, nb=gb;
+    if(diff>0){ // A higher hcp -> A gets strokes
+      na = ga - strokesOnHole(diff,hole.si);
+    } else if(diff<0){
+      nb = gb - strokesOnHole(Math.abs(diff),hole.si);
+    }
+    if(na<nb) state++;
+    else if(nb<na) state--;
+    lastDecided++;
+  });
+  return {state,played:lastDecided,total:h.length};
+}
+
+// SKINS: each hole won outright (net) = 1 skin; ties carry over
+function skinsResult(round){
+  const h=holesInPlay(round);
+  const pl=round.players.map(id=>S.players.find(p=>p.id===id)).filter(Boolean);
+  const skins={}; pl.forEach(p=>skins[p.id]=0);
+  let carry=0;
+  const holeLog=[];
+  h.forEach(hole=>{
+    const nets=pl.map(p=>{
+      const g=round.scores[p.id]?.[hole.n];
+      if(!g) return {id:p.id,net:Infinity,played:false};
+      return {id:p.id,net:g-strokesOnHole(playingHcp(p,round),hole.si),played:true};
+    });
+    if(nets.some(n=>!n.played)){holeLog.push({hole:hole.n,winner:null,carry});return;}
+    const min=Math.min(...nets.map(n=>n.net));
+    const winners=nets.filter(n=>n.net===min);
+    if(winners.length===1){
+      skins[winners[0].id]+= (1+carry);
+      holeLog.push({hole:hole.n,winner:winners[0].id,value:1+carry});
+      carry=0;
+    } else {
+      carry++;
+      holeLog.push({hole:hole.n,winner:null,carry});
+    }
+  });
+  return {skins,holeLog,carry};
+}
+
+// TEAM MATCH (best ball net): two teams, lowest net on hole wins the hole
+function teamMatchResult(round){
+  const h=holesInPlay(round);
+  const tA=round.teamA||[], tB=round.teamB||[];
+  let state=0;
+  h.forEach(hole=>{
+    const best=(team)=>{
+      let b=Infinity,ok=false;
+      team.forEach(id=>{
+        const g=round.scores[id]?.[hole.n];
+        if(g){ok=true;const p=S.players.find(x=>x.id===id);b=Math.min(b,g-strokesOnHole(playingHcp(p,round),hole.si));}
+      });
+      return ok?b:null;
+    };
+    const a=best(tA),b=best(tB);
+    if(a==null||b==null) return;
+    if(a<b) state++; else if(b<a) state--;
+  });
+  return {state,total:h.length};
+}
+
+function scoreClass(g,par){
+  if(g==null) return "";
+  const d=g-par;
+  if(d<=-2)return "eagle"; if(d===-1)return "birdie"; if(d===0)return "par";
+  if(d===1)return "bogey"; return "dbl";
+}
+
+// =================== RENDER ===================
+function render(){
+  persist();
+  const app=$("#app");
+  try{
+    app.innerHTML="";
+    app.appendChild(Topbar());
+    const v=el("div","view");
+    if(S.tab==="home") v.appendChild(Home());
+    else if(S.tab==="play") v.appendChild(S.active?Play():SetupRound());
+    else if(S.tab==="gps") v.appendChild(GPSView());
+    else if(S.tab==="board") v.appendChild(Board());
+    else if(S.tab==="dads") v.appendChild(Dads());
+    app.appendChild(v);
+    app.appendChild(Nav());
+    if(S.tab==="gps") setTimeout(initMap,60);
+  }catch(err){
+    console.error("render error on tab",S.tab,err);
+    renderError(app,err);
+  }
+}
+function renderError(app,err){
+  app.innerHTML="";
+  app.appendChild(Topbar());
+  const v=el("div","view");
+  const c=el("div","card center");
+  c.innerHTML=`<div class="empty"><div class="ico">⛳</div>
+    <div style="font-weight:700;color:var(--cream);margin-bottom:6px">That screen hit a snag</div>
+    <div class="mini">Your scores are safe. Tap below to go back home.</div></div>`;
+  const b=el("button","btn btn-primary","Back to home");
+  b.onclick=()=>{S.tab="home";render();};
+  c.appendChild(b);
+  v.appendChild(c);
+  app.appendChild(v);
+  app.appendChild(Nav());
+}
+
+function Topbar(){
+  const t=el("div","topbar");
+  t.innerHTML=`<div class="brand">
+    <svg class="flag" viewBox="0 0 40 40" fill="none">
+      <path d="M10 4v32" stroke="#c8f04a" stroke-width="2.4" stroke-linecap="round"/>
+      <path d="M11 5l16 5-16 6V5z" fill="#c2643c"/>
+      <circle cx="10" cy="36" r="3" fill="#34a35a"/>
+    </svg>
+    <div><h1>Fairway <span>Dads</span></h1><div class="brand-sub">Hilton Park · est. banter</div></div>
+  </div>`;
+  return t;
+}
+
+function Nav(){
+  const n=el("div","nav");
+  const items=[
+    ["home","Home",'<path d="M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10"/>'],
+    ["play","Play",'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'],
+    ["gps","GPS",'<path d="M12 2C8 2 5 5 5 9c0 5 7 13 7 13s7-8 7-13c0-4-3-7-7-7z"/><circle cx="12" cy="9" r="2.4"/>'],
+    ["board","Board",'<path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/>'],
+    ["dads","Dads",'<circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.5 3-6 6-6s6 2.5 6 6"/><circle cx="17" cy="9" r="2.6"/><path d="M16 20c0-2.5 1.5-4.5 4-4.8"/>']
+  ];
+  items.forEach(([k,lbl,svg])=>{
+    const b=el("button",S.tab===k?"active":"",`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">${svg}</svg>${lbl}`);
+    b.onclick=()=>{S.tab=k;render();};
+    n.appendChild(b);
+  });
+  return n;
+}
+
+// ---------- HOME ----------
+function Home(){
+  const w=el("div");
+  // hero
+  const hero=el("div","card");
+  hero.style.background="linear-gradient(150deg, var(--green-600), var(--green-700))";
+  const lastRound=S.rounds[S.rounds.length-1];
+  hero.innerHTML=`<div class="eyebrow">${greeting()}, ${S.players[0]?.name||"Dad"}</div>
+    <div class="display" style="font-size:34px;color:var(--cream);margin:4px 0 10px">Ready for<br>a <em style="color:var(--lime);font-style:italic" class="serif">wee game?</em></div>
+    <div class="muted mini">${S.players.length} dad${S.players.length!==1?"s":""} in the group · ${S.rounds.length} round${S.rounds.length!==1?"s":""} logged</div>`;
+  w.appendChild(hero);
+
+  if(S.active){
+    const r=S.active;const c=COURSES[r.course];
+    const live=el("div","card");live.style.borderColor="var(--clay)";
+    live.innerHTML=`<div class="row between"><span class="tag live">● LIVE ROUND</span><span class="muted mini">${c.short} · ${r.holes} holes</span></div>
+      <div class="bigtitle serif" style="font-size:22px;margin:10px 0 4px">${fmtFormat(r.format)}</div>`;
+    const btn=el("button","btn btn-primary","Resume round");
+    btn.onclick=()=>{S.tab="play";render();};
+    live.appendChild(btn);
+    w.appendChild(live);
+  } else {
+    const cta=el("button","btn btn-primary","⛳  Start a new round");
+    cta.style.marginBottom="14px";
+    cta.onclick=()=>{S.tab="play";render();};
+    w.appendChild(cta);
+  }
+
+  // quick standings
+  if(S.rounds.length){
+    const sb=el("div","card");
+    sb.innerHTML=`<div class="eyebrow">Season standings</div>`;
+    const standings=seasonStandings().slice(0,3);
+    standings.forEach((s,i)=>{
+      const row=el("div","lbrow");
+      row.innerHTML=`<div class="rank r${i+1}">${i+1}</div>
+        <div class="av" style="background:${s.color}">${initials(s.name)}</div>
+        <div style="flex:1"><div style="font-weight:700">${s.name}</div><div class="muted mini">${s.wins} win${s.wins!==1?"s":""} · ${s.played} played</div></div>
+        <div class="serif" style="font-size:20px;color:var(--lime);font-weight:900">${s.pts}</div>`;
+      sb.appendChild(row);
+    });
+    const more=el("button","btn btn-ghost btn-sm","Full leaderboard");
+    more.style.marginTop="12px";more.style.width="100%";
+    more.onclick=()=>{S.tab="board";render();};
+    sb.appendChild(more);
+    w.appendChild(sb);
+  } else {
+    const e=el("div","card center");
+    e.innerHTML=`<div class="empty"><div class="ico">🏌️</div>No rounds yet. Play your first game and the leaderboard fills up.</div>`;
+    w.appendChild(e);
+  }
+  return w;
+}
+function greeting(){const h=new Date().getHours();return h<12?"Morning":h<18?"Afternoon":"Evening";}
+function fmtFormat(f){return {stroke:"Stroke Play",match:"Match Play",team:"Team Match Play",skins:"Skins"}[f]||f;}
+
+
+// ---------- DADS (roster) ----------
+function Dads(){
+  const w=el("div");
+  w.appendChild(el("div","",`<div class="eyebrow">The crew</div><div class="bigtitle">The <em>Dads</em></div>`));
+  S.players.forEach(p=>{
+    const c=el("div","card tight");
+    c.innerHTML=`<div class="row">
+      <div class="av" style="background:${p.color};width:46px;height:46px;font-size:17px">${initials(p.name)}</div>
+      <div style="flex:1">
+        <div style="font-weight:700;font-size:17px">${p.name}</div>
+        <div class="muted mini">Handicap ${p.hcp}</div>
+      </div></div>`;
+    const edit=el("div","row","");edit.style.marginTop="12px";edit.style.gap="8px";
+    const nameI=el("input");nameI.value=p.name;nameI.style.flex="2";
+    const hcpI=el("input");hcpI.type="number";hcpI.value=p.hcp;hcpI.style.flex="1";hcpI.min="-5";hcpI.max="54";
+    nameI.oninput=e=>{p.name=e.target.value;};
+    hcpI.oninput=e=>{p.hcp=parseInt(e.target.value)||0;};
+    nameI.onblur=save;hcpI.onblur=save;
+    edit.appendChild(nameI);edit.appendChild(hcpI);
+    c.appendChild(edit);
+    if(S.players.length>1){
+      const d=el("button","del","Remove dad");
+      d.onclick=()=>{if(confirm(`Remove ${p.name}?`)){S.players=S.players.filter(x=>x.id!==p.id);save();}};
+      c.appendChild(d);
+    }
+    w.appendChild(c);
+  });
+  const add=el("button","btn btn-primary","＋ Add a dad");
+  add.onclick=()=>{
+    const used=S.players.map(p=>p.color);
+    const col=AVATAR_COLORS.find(c=>!used.includes(c))||AVATAR_COLORS[S.players.length%AVATAR_COLORS.length];
+    S.players.push({id:uid(),name:"New Dad",hcp:18,color:col});
+    save();
+  };
+  w.appendChild(add);
+  w.appendChild(el("div","card mini muted center",`Handicaps drive every net score, match-play stroke and skin. Keep them honest — the committee is watching. 👀`));
+  return w;
+}
+
+// ---------- SETUP ROUND ----------
+function SetupRound(){
+  if(!S.setup.course)S.setup={course:"hilton",holes:9,nine:"front",format:"stroke",players:[],teamA:[],teamB:[]};
+  const st=S.setup;
+  const w=el("div");
+  w.appendChild(el("div","",`<div class="eyebrow">New round</div><div class="bigtitle">Set <em>it up</em></div>`));
+
+  // Course
+  const cc=el("div","card");
+  cc.innerHTML=`<label>Course</label>`;
+  const crow=el("div","chips");
+  Object.entries(COURSES).forEach(([k,c])=>{
+    const ch=el("div","chip"+(st.course===k?" on":""),c.short);
+    ch.onclick=()=>{st.course=k;render();};
+    crow.appendChild(ch);
+  });
+  cc.appendChild(crow);
+  // holes
+  cc.appendChild(el("label","",`Holes`));
+  const hrow=el("div","chips");
+  [9,18].forEach(n=>{
+    const ch=el("div","chip"+(st.holes===n?" on":""),n+" holes");
+    ch.onclick=()=>{st.holes=n;render();};
+    hrow.appendChild(ch);
+  });
+  cc.appendChild(hrow);
+  if(st.holes===9){
+    const nrow=el("div","chips");
+    [["front","Front 9"],["back","Back 9"]].forEach(([k,l])=>{
+      const ch=el("div","chip"+(st.nine===k?" on":""),l);
+      ch.onclick=()=>{st.nine=k;render();};
+      nrow.appendChild(ch);
+    });
+    cc.appendChild(nrow);
+  }
+  w.appendChild(cc);
+
+  // Format
+  const fc=el("div","card");
+  fc.innerHTML=`<label>Format</label>`;
+  const frow=el("div","chips");
+  [["stroke","Stroke"],["match","Match Play"],["skins","Skins"],["team","Team Match"]].forEach(([k,l])=>{
+    const ch=el("div","chip"+(st.format===k?" on":""),l);
+    ch.onclick=()=>{st.format=k;if(k!=="match")st.players=st.players;render();};
+    frow.appendChild(ch);
+  });
+  fc.appendChild(frow);
+  fc.appendChild(el("div","mini muted",formatHint(st.format)));
+  w.appendChild(fc);
+
+  // Players
+  const pc=el("div","card");
+  pc.innerHTML=`<label>Who's playing?</label>`;
+  S.players.forEach(p=>{
+    const on=st.players.includes(p.id);
+    const r=el("div","pscore");r.style.marginBottom="8px";r.style.cursor="pointer";
+    r.innerHTML=`<div class="row" style="flex:1"><div class="av" style="background:${p.color}">${initials(p.name)}</div>
+      <div class="nmblock"><div class="pn">${p.name}</div><div class="sub">Hcp ${p.hcp}</div></div></div>
+      <div style="font-size:22px;color:${on?'var(--lime)':'rgba(255,255,255,.2)'}">${on?'✓':'○'}</div>`;
+    r.onclick=()=>{
+      if(on)st.players=st.players.filter(x=>x!==p.id);
+      else st.players.push(p.id);
+      render();
+    };
+    pc.appendChild(r);
+  });
+  if(S.players.length<2)pc.appendChild(el("div","mini muted center",`Add more dads on the Dads tab first.`));
+  w.appendChild(pc);
+
+  // Teams (team format)
+  if(st.format==="team"){
+    const tc=el("div","card");
+    tc.innerHTML=`<label>Teams (best ball, net)</label>`;
+    const sel=st.players;
+    sel.forEach(pid=>{
+      const p=S.players.find(x=>x.id===pid);
+      const inA=st.teamA.includes(pid), inB=st.teamB.includes(pid);
+      const r=el("div","row between");r.style.marginBottom="8px";
+      r.innerHTML=`<div class="row"><div class="av" style="background:${p.color};width:32px;height:32px;font-size:13px">${initials(p.name)}</div><span style="font-weight:600">${p.name}</span></div>`;
+      const tog=el("div","btn-row");
+      const a=el("button","chip"+(inA?" on":""),"A");
+      const b=el("button","chip"+(inB?" on":""),"B");
+      a.onclick=()=>{st.teamA=[...st.teamA.filter(x=>x!==pid),...(inA?[]:[pid])];st.teamB=st.teamB.filter(x=>x!==pid);render();};
+      b.onclick=()=>{st.teamB=[...st.teamB.filter(x=>x!==pid),...(inB?[]:[pid])];st.teamA=st.teamA.filter(x=>x!==pid);render();};
+      tog.appendChild(a);tog.appendChild(b);
+      r.appendChild(tog);
+      tc.appendChild(r);
+    });
+    w.appendChild(tc);
+  }
+
+  const go=el("button","btn btn-primary","Tee off  ⛳");
+  go.onclick=()=>startRound();
+  w.appendChild(go);
+  return w;
+}
+function formatHint(f){
+  return {
+    stroke:"Lowest net total wins. Handicaps applied per stroke index.",
+    match:"Head-to-head, hole by hole. Strokes given on the toughest holes. Pick exactly 2 players (or more for a mini-league).",
+    skins:"Win a hole outright (net) to take the skin. Ties carry over — pressure builds.",
+    team:"Two teams, best net ball on each hole wins it."
+  }[f];
+}
+
+function startRound(){
+  const st=S.setup;
+  if(st.players.length<1){toast("Pick at least one player");return;}
+  if(st.format==="match"&&st.players.length<2){toast("Match play needs 2 players");return;}
+  if(st.format==="team"&&(st.teamA.length<1||st.teamB.length<1)){toast("Set both teams");return;}
+  S.active={
+    id:uid(),date:Date.now(),
+    course:st.course,holes:st.holes,nine:st.nine,format:st.format,
+    players:[...st.players],teamA:[...st.teamA],teamB:[...st.teamB],
+    scores:{},current:0,banter:[]
+  };
+  st.players.forEach(p=>S.active.scores[p]={});
+  S.setup={};
+  S.tab="play";render();
+  toast("Good luck, dads 🍀");
+}
+
+// ---------- PLAY (live scoring) ----------
+function Play(){
+  const r=S.active;const c=COURSES[r.course];
+  const holes=holesInPlay(r);
+  const idx=r.current;
+  const hole=holes[idx];
+  const w=el("div");
+
+  // top status bar
+  const top=el("div","row between");top.style.margin="2px 0 12px";
+  top.innerHTML=`<span class="tag live">● LIVE</span><span class="muted mini">${c.short} · ${fmtFormat(r.format)} · ${r.holes}H</span>`;
+  const finishBtn=el("button","del","Finish ▸");
+  finishBtn.onclick=()=>finishRound();
+  top.appendChild(finishBtn);
+  w.appendChild(top);
+
+  // hole header card
+  const hc=el("div","card");
+  hc.innerHTML=`<div class="holehead">
+    <div class="holenum">${hole.n}</div>
+    <div class="holemeta"><div class="nm">${hole.name}</div><div class="pr">Par ${hole.par} · ${hole.yards} yds · SI ${hole.si}</div></div>
+  </div>`;
+  // progress dots
+  const prog=el("div","row");prog.style.gap="5px";prog.style.flexWrap="wrap";prog.style.marginTop="4px";
+  holes.forEach((h,i)=>{
+    const done=r.players.every(pid=>r.scores[pid]?.[h.n]);
+    const d=el("span");d.style.cssText=`width:9px;height:9px;border-radius:50%;background:${i===idx?'var(--lime)':done?'var(--green-400)':'rgba(255,255,255,.16)'};${i===idx?'box-shadow:0 0 8px var(--lime)':''}`;
+    d.onclick=()=>{r.current=i;render();};
+    prog.appendChild(d);
+  });
+  hc.appendChild(prog);
+  w.appendChild(hc);
+
+  // per-player score steppers
+  r.players.forEach(pid=>{
+    const p=S.players.find(x=>x.id===pid);
+    const ph=playingHcp(p,r);
+    const shots=strokesOnHole(ph,hole.si);
+    const v=r.scores[pid]?.[hole.n];
+    const row=el("div","pscore");
+    const sc=scoreClass(v,hole.par);
+    row.innerHTML=`<div class="nmblock row"><div class="av" style="background:${p.color};width:34px;height:34px;font-size:13px">${initials(p.name)}</div>
+      <div><div class="pn">${p.name}</div><div class="sub">${shots>0?'<span class="dot"></span>'.repeat(shots)+' stroke'+(shots>1?'s':'')+' here':'No strokes'} · net ${v!=null?v-shots:'–'}</div></div></div>`;
+    const stp=el("div","stepper");
+    const minus=el("button","","–");
+    const val=el("div","val",v!=null?v:"–");
+    if(sc){val.style.color=sc==='eagle'?'var(--gold)':sc==='birdie'?'var(--clay)':sc==='dbl'?'var(--clay)':'var(--cream)';}
+    const plus=el("button","","＋");
+    minus.onclick=()=>{const cur=r.scores[pid][hole.n]||hole.par;const nx=Math.max(1,cur-1);r.scores[pid][hole.n]=nx;maybeBanter(r,hole);render();};
+    plus.onclick=()=>{const cur=r.scores[pid][hole.n]||(hole.par-1);r.scores[pid][hole.n]=cur+1;maybeBanter(r,hole);render();};
+    stp.appendChild(minus);stp.appendChild(val);stp.appendChild(plus);
+    row.appendChild(stp);
+    w.appendChild(row);
+  });
+
+  // live match / skins status
+  w.appendChild(liveStatus(r));
+
+  // nav buttons
+  const navr=el("div","btn-row");navr.style.marginTop="6px";
+  const prev=el("button","btn btn-ghost","◂ Prev");
+  prev.disabled=idx===0;prev.style.opacity=idx===0?.4:1;
+  prev.onclick=()=>{r.current=Math.max(0,idx-1);render();};
+  const next=el("button","btn btn-primary",idx===holes.length-1?"Finish ▸":"Next ▸");
+  next.onclick=()=>{if(idx===holes.length-1)finishRound();else{r.current=idx+1;render();}};
+  navr.appendChild(prev);navr.appendChild(next);
+  w.appendChild(navr);
+
+  // mini scorecard toggle
+  const scBtn=el("button","btn btn-ghost btn-sm","View scorecard");
+  scBtn.style.cssText="width:100%;margin-top:10px";
+  scBtn.onclick=()=>{const sc=$("#scwrap");sc.classList.toggle("hidden");scBtn.textContent=sc.classList.contains("hidden")?"View scorecard":"Hide scorecard";};
+  w.appendChild(scBtn);
+  const scw=el("div","hidden");scw.id="scwrap";scw.style.marginTop="12px";
+  scw.appendChild(Scorecard(r));
+  w.appendChild(scw);
+
+  // GPS shortcut
+  const gpsBtn=el("button","btn btn-gold","📍 GPS yardages for this hole");
+  gpsBtn.style.marginTop="10px";
+  gpsBtn.onclick=()=>{S.gpsHole=hole.n;S.tab="gps";render();};
+  w.appendChild(gpsBtn);
+
+  // banter feed
+  if(r.banter.length){
+    const bf=el("div","card");
+    bf.innerHTML=`<div class="eyebrow">Clubhouse chatter</div>`;
+    r.banter.slice(-4).reverse().forEach(b=>bf.appendChild(el("div","banter","“"+b+"”")));
+    w.appendChild(bf);
+  }
+  return w;
+}
+
+function liveStatus(r){
+  const box=el("div","card tight");
+  box.style.background="rgba(0,0,0,.2)";
+  if(r.format==="match"&&r.players.length===2){
+    const res=matchPlayResult(r,r.players[0],r.players[1]);
+    const A=S.players.find(p=>p.id===r.players[0]),B=S.players.find(p=>p.id===r.players[1]);
+    let txt;
+    const remaining=res.total-res.played;
+    if(res.state===0)txt=`<span style="color:var(--lime)">All square</span> thru ${res.played}`;
+    else{const leader=res.state>0?A:B;const up=Math.abs(res.state);
+      const dormie=up>=remaining&&remaining>0;
+      txt=`<span style="color:var(--lime)">${leader.name} ${up} up</span>${dormie?' (dormie)':''} · ${remaining} to play`;
+      if(up>remaining)txt=`<span style="color:var(--gold)">${leader.name} wins ${up}&${remaining}</span> 🏆`;
+    }
+    box.innerHTML=`<div class="eyebrow">Match status</div><div style="font-weight:700;font-size:16px">${txt}</div>`;
+  } else if(r.format==="skins"){
+    const {skins,carry}=skinsResult(r);
+    box.innerHTML=`<div class="eyebrow">Skins ${carry>0?'· '+carry+' carrying over':''}</div>`;
+    const sorted=r.players.map(id=>({p:S.players.find(x=>x.id===id),s:skins[id]||0})).sort((a,b)=>b.s-a.s);
+    sorted.forEach(({p,s})=>{
+      box.appendChild(el("div","row between",`<span style="font-weight:600">${p.name}</span><span class="serif" style="color:var(--lime);font-weight:900">${s} skin${s!==1?'s':''}</span>`));
+    });
+  } else if(r.format==="team"){
+    const res=teamMatchResult(r);
+    const nm=t=>r[t].map(id=>S.players.find(p=>p.id===id)?.name.split(' ')[0]).join(" & ");
+    let txt;
+    if(res.state===0)txt='<span style="color:var(--lime)">All square</span>';
+    else{const lead=res.state>0?'Team A':'Team B';txt=`<span style="color:var(--lime)">${lead} ${Math.abs(res.state)} up</span>`;}
+    box.innerHTML=`<div class="eyebrow">${nm('teamA')} vs ${nm('teamB')}</div><div style="font-weight:700;font-size:16px">${txt}</div>`;
+  } else {
+    box.innerHTML=`<div class="eyebrow">Net leader</div>`;
+    const sorted=r.players.map(id=>{const p=S.players.find(x=>x.id===id);const {total,thru}=grossThru(r,id);return {p,net:netTotal(r,id),gross:total,thru};}).sort((a,b)=>a.net-b.net);
+    sorted.forEach((x,i)=>{
+      box.appendChild(el("div","row between",`<span style="font-weight:600">${i===0?'🥇 ':''}${x.p.name} <span class="muted mini">(${x.thru} holes)</span></span><span class="serif" style="color:var(--lime);font-weight:900">${x.net||'–'}</span>`));
+    });
+  }
+  return box;
+}
+
+function maybeBanter(r,hole){
+  // small chance to drop a line on a notable score
+  const vals=r.players.map(p=>r.scores[p]?.[hole.n]).filter(Boolean);
+  if(!vals.length)return;
+  const best=Math.min(...vals);
+  if(best<=hole.par-1 && Math.random()<0.5){
+    const b=BANTER[Math.floor(Math.random()*BANTER.length)];
+    if(r.banter[r.banter.length-1]!==b)r.banter.push(b);
+  }
+}
+
+// ---------- SCORECARD ----------
+function Scorecard(r){
+  const holes=holesInPlay(r);
+  const wrap=el("div","scorewrap");
+  const t=el("table","sc");
+  // header
+  let head="<thead><tr><th class='hname'>Hole</th>";
+  holes.forEach(h=>head+=`<th>${h.n}</th>`);
+  head+="<th>Tot</th><th>Net</th></tr>";
+  head+="<tr><td class='hname par'>Par</td>";
+  holes.forEach(h=>head+=`<td class='par'>${h.par}</td>`);
+  head+=`<td class='par'>${holes.reduce((a,h)=>a+h.par,0)}</td><td></td></tr></thead>`;
+  t.innerHTML=head;
+  const tb=el("tbody");
+  r.players.forEach(pid=>{
+    const p=S.players.find(x=>x.id===pid);
+    let row=`<td class='hname'><span class="av" style="background:${p.color};width:22px;height:22px;font-size:10px;display:inline-flex;vertical-align:middle">${initials(p.name)}</span> ${p.name.split(' ')[0]}</td>`;
+    holes.forEach(h=>{
+      const v=r.scores[pid]?.[h.n];
+      const sc=scoreClass(v,h.par);
+      row+=`<td>${v!=null?`<span class="sb ${sc}">${v}</span>`:'·'}</td>`;
+    });
+    row+=`<td class='par' style="color:var(--cream);font-weight:700">${gross(r,pid)||'–'}</td><td style="color:var(--lime);font-weight:800">${netTotal(r,pid)||'–'}</td>`;
+    const tr=el("tr","",row);tb.appendChild(tr);
+  });
+  t.appendChild(tb);
+  wrap.appendChild(t);
+  return wrap;
+}
+
+// ---------- FINISH ----------
+function finishRound(){
+  const r=S.active;
+  // compute result summary + winner
+  r.summary=computeSummary(r);
+  r.done=true;
+  S.rounds.push(r);
+  S.active=null;
+  S.tab="board";
+  S.justFinished=r.id;
+  render();
+  toast("Round in the books 📖");
+}
+
+function computeSummary(r){
+  if(r.format==="match"&&r.players.length===2){
+    const res=matchPlayResult(r,r.players[0],r.players[1]);
+    const A=S.players.find(p=>p.id===r.players[0]),B=S.players.find(p=>p.id===r.players[1]);
+    if(res.state===0)return{type:"match",text:"Halved match",winners:[]};
+    const win=res.state>0?A:B;const margin=Math.abs(res.state);const rem=res.total-res.played;
+    return{type:"match",text:`${win.name} won ${margin}&${rem||'up'}`,winners:[win.id]};
+  }
+  if(r.format==="skins"){
+    const {skins}=skinsResult(r);
+    const max=Math.max(...Object.values(skins));
+    const winners=Object.keys(skins).filter(k=>skins[k]===max&&max>0).map(Number);
+    const names=winners.map(id=>S.players.find(p=>p.id===id)?.name).join(" & ");
+    return{type:"skins",text:max>0?`${names} — ${max} skins`:"No skins won",winners,skins};
+  }
+  if(r.format==="team"){
+    const res=teamMatchResult(r);
+    if(res.state===0)return{type:"team",text:"Teams halved",winners:[]};
+    const team=res.state>0?r.teamA:r.teamB;
+    const nm=team.map(id=>S.players.find(p=>p.id===id)?.name.split(' ')[0]).join(" & ");
+    return{type:"team",text:`${nm} took it, ${Math.abs(res.state)} up`,winners:team};
+  }
+  // stroke
+  const sorted=r.players.map(id=>({id,net:netTotal(r,id),gross:gross(r,id)})).sort((a,b)=>a.net-b.net);
+  const win=S.players.find(p=>p.id===sorted[0].id);
+  return{type:"stroke",text:`${win.name} — net ${sorted[0].net}`,winners:[sorted[0].id],table:sorted};
+}
+
+// ---------- BOARD ----------
+function seasonStandings(){
+  const map={};
+  S.players.forEach(p=>map[p.id]={id:p.id,name:p.name,color:p.color,pts:0,wins:0,played:0});
+  S.rounds.forEach(r=>{
+    r.players.forEach(pid=>{if(map[pid])map[pid].played++;});
+    (r.summary?.winners||[]).forEach(w=>{if(map[w]){map[w].wins++;map[w].pts+=3;}});
+    // participation point
+    r.players.forEach(pid=>{if(map[pid]&&!(r.summary?.winners||[]).includes(pid))map[pid].pts+=1;});
+  });
+  return Object.values(map).filter(p=>p.played>0).sort((a,b)=>b.pts-a.pts||b.wins-a.wins);
+}
+
+function Board(){
+  const w=el("div");
+  w.appendChild(el("div","",`<div class="eyebrow">Glory & shame</div><div class="bigtitle">The <em>Board</em></div>`));
+
+  // season table
+  const standings=seasonStandings();
+  if(standings.length){
+    const sb=el("div","card");
+    sb.innerHTML=`<div class="eyebrow">Season standings · 3pts win, 1pt played</div>`;
+    standings.forEach((s,i)=>{
+      const row=el("div","lbrow");
+      row.innerHTML=`<div class="rank r${i+1}">${i===0?'👑':i+1}</div>
+        <div class="av" style="background:${s.color}">${initials(s.name)}</div>
+        <div style="flex:1"><div style="font-weight:700">${s.name}</div><div class="muted mini">${s.wins} win${s.wins!==1?'s':''} · ${s.played} round${s.played!==1?'s':''}</div></div>
+        <div class="serif" style="font-size:22px;color:var(--lime);font-weight:900">${s.pts}</div>`;
+      sb.appendChild(row);
+    });
+    w.appendChild(sb);
+  }
+
+  // history
+  w.appendChild(el("div","eyebrow","Recent rounds"));
+  if(!S.rounds.length){
+    w.appendChild(el("div","card empty",`<div class="ico">📋</div>No rounds played yet.`));
+  }
+  [...S.rounds].reverse().forEach(r=>{
+    const c=COURSES[r.course];
+    const card=el("div","card");
+    if(r.id===S.justFinished)card.style.borderColor="var(--lime)";
+    const d=new Date(r.date);
+    card.innerHTML=`<div class="row between"><span class="tag" style="background:rgba(200,240,74,.15);color:var(--lime)">${fmtFormat(r.format)}</span>
+      <span class="muted mini">${d.toLocaleDateString('en-GB',{day:'numeric',month:'short'})} · ${c.short} · ${r.holes}H</span></div>
+      <div class="serif" style="font-size:20px;margin:8px 0 4px;color:var(--cream)">${r.summary?.text||''} 🏆</div>`;
+    const toggle=el("button","btn btn-ghost btn-sm","Scorecard");toggle.style.marginTop="8px";
+    const scw=el("div","hidden");scw.style.marginTop="10px";
+    let built=false;
+    toggle.onclick=()=>{if(!built){scw.appendChild(Scorecard(r));built=true;}scw.classList.toggle("hidden");};
+    card.appendChild(toggle);card.appendChild(scw);
+    w.appendChild(card);
+  });
+  S.justFinished=null;
+  return w;
+}
+
+// ---------- GPS ----------
+let MAP=null, posMarker=null, greenMarker=null, ballMarker=null, lineLayer=null, accCircle=null;
+let userPos=null, watchId=null;
+// approximate green coords seeded around each course centre (REPLACE via "set pin from here")
+function ensurePins(){
+  Object.entries(COURSES).forEach(([k,c])=>{
+    c.holes.forEach((h,i)=>{
+      if(!h.green){
+        const ang=(i/18)*Math.PI*2;
+        h.green=[c.centre[0]+Math.cos(ang)*0.006, c.centre[1]+Math.sin(ang)*0.010];
+        h.approx=true;
+      }
+    });
+  });
+}
+ensurePins();
+
+function currentGpsHole(){
+  const courseKey = S.active?.course || "hilton";
+  const c=COURSES[courseKey];
+  const hn = S.gpsHole || (S.active?holesInPlay(S.active)[S.active.current].n:1);
+  return {c, hole:c.holes.find(h=>h.n===hn)||c.holes[0], courseKey};
+}
+
+function GPSView(){
+  const {c,hole}=currentGpsHole();
+  const w=el("div");
+  w.appendChild(el("div","row between",`<div><div class="eyebrow">${c.short}</div><div class="bigtitle" style="margin:0">Hole <em>${hole.n}</em></div></div>
+    <div class="holemeta"><div class="nm">${hole.name}</div><div class="pr">Par ${hole.par} · SI ${hole.si}</div></div>`));
+
+  // hole selector
+  const sel=el("div","scroll-x");
+  c.holes.forEach(h=>{
+    const ch=el("div","chip"+(h.n===hole.n?" on":""),String(h.n));
+    ch.onclick=()=>{S.gpsHole=h.n;render();};
+    sel.appendChild(ch);
+  });
+  w.appendChild(sel);
+
+  const map=el("div");map.id="map";
+  w.appendChild(map);
+
+  // yardage readout
+  const yc=el("div","card");
+  yc.id="yardcard";
+  yc.innerHTML=`<div class="center"><div class="eyebrow">To centre of green</div>
+    <div class="yard-big" id="yardmid">— <span style="font-size:18px;color:var(--cream-dim)">yds</span></div></div>`;
+  const grid=el("div","yard-grid");grid.style.marginTop="12px";
+  grid.innerHTML=`<div class="yc"><div class="n" id="yfront">—</div><div class="l">Front</div></div>
+    <div class="yc mid"><div class="n" id="ymid2">—</div><div class="l">Middle</div></div>
+    <div class="yc"><div class="n" id="yback">—</div><div class="l">Back</div></div>`;
+  yc.appendChild(grid);
+  w.appendChild(yc);
+
+  // shot tracking readout
+  const shot=el("div","card tight hidden");shot.id="shotcard";
+  shot.innerHTML=`<div class="row between"><div><div class="eyebrow">Tapped point</div><div class="serif" style="font-size:18px" id="shotdist">—</div></div>
+    <button class="btn btn-ghost btn-sm" id="clearshot">Clear</button></div>`;
+  w.appendChild(shot);
+
+  // controls
+  const loc=el("button","btn btn-primary","📍 Use my location");
+  loc.onclick=startGps;
+  w.appendChild(loc);
+
+  if(hole.approx){
+    const warn=el("div","card mini muted");
+    warn.innerHTML=`⚠️ This pin is an <b>approximate</b> location. Stand on the green and tap <b>Set pin from here</b> to lock real GPS accuracy. Do this once per hole and your yardages will be spot-on forever after.`;
+    w.appendChild(warn);
+  }
+  const setpin=el("button","btn btn-gold","🎯 Set pin from my location");
+  setpin.style.marginTop="6px";
+  setpin.onclick=()=>setPinHere(hole);
+  w.appendChild(setpin);
+
+  const hint=el("div","card mini muted center","Tap anywhere on the map to measure a shot line from your position. Uses a free satellite layer — no Google key needed, works the same in your pocket.");
+  w.appendChild(hint);
+  return w;
+}
+
+let _mapTries=0;
+function initMap(){
+  const m=document.getElementById("map");
+  if(!m) return;                          // not on GPS screen
+  if(typeof L==="undefined"){             // Leaflet not ready yet
+    _mapTries++;
+    if(_mapTries<40){ setTimeout(initMap,150); }   // keep waiting (~6s)
+    else { mapFallback(m); }               // give up -> graceful message
+    return;
+  }
+  _mapTries=0;
+  try{
+    const {hole}=currentGpsHole();
+    if(MAP){ try{MAP.remove();}catch(e){} MAP=null; }
+    MAP=L.map("map",{zoomControl:false,attributionControl:false}).setView(hole.green,17);
+    L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",{maxZoom:19}).addTo(MAP);
+    L.control.zoom({position:"bottomright"}).addTo(MAP);
+    greenMarker=L.marker(hole.green,{icon:flagIcon()}).addTo(MAP);
+    MAP.on("click",e=>{
+      if(ballMarker)MAP.removeLayer(ballMarker);
+      ballMarker=L.marker(e.latlng,{icon:ballIcon()}).addTo(MAP);
+      drawLine();
+      updateShotCard(e.latlng);
+    });
+    if(userPos)placeUser(userPos);
+    updateYards();
+  }catch(err){
+    console.warn("map init failed",err);
+    mapFallback(m);
+  }
+}
+function mapFallback(m){
+  if(!m)return;
+  m.style.height="auto";
+  m.innerHTML=`<div style="padding:26px 18px;text-align:center;color:var(--cream-dim)">
+    <div style="font-size:34px;margin-bottom:8px">🛰️</div>
+    <div style="font-weight:600;color:var(--cream);margin-bottom:4px">Satellite map offline</div>
+    <div class="mini">No connection to the map tiles right now. <b>Yardages below still work</b> from your GPS — the aerial view returns when you're back online.</div>
+  </div>`;
+}
+function flagIcon(){return L.divIcon({className:"",html:`<div style="font-size:26px;transform:translate(-4px,-22px);filter:drop-shadow(0 2px 3px rgba(0,0,0,.6))">⛳</div>`});}
+function ballIcon(){return L.divIcon({className:"",html:`<div style="width:14px;height:14px;border-radius:50%;background:#fff;border:2px solid #c2643c;transform:translate(-7px,-7px);box-shadow:0 0 6px rgba(0,0,0,.5)"></div>`});}
+function userIcon(){return L.divIcon({className:"",html:`<div style="width:18px;height:18px;border-radius:50%;background:#7fc3d6;border:3px solid #fff;transform:translate(-9px,-9px);box-shadow:0 0 10px #7fc3d6"></div>`});}
+
+function startGps(){
+  if(!navigator.geolocation){toast("No GPS on this device");return;}
+  toast("Getting your location…");
+  if(watchId)navigator.geolocation.clearWatch(watchId);
+  watchId=navigator.geolocation.watchPosition(p=>{
+    userPos=[p.coords.latitude,p.coords.longitude];
+    S.acc=p.coords.accuracy;
+    placeUser(userPos);
+    updateYards();
+  },err=>{
+    toast("Location blocked. Allow it in browser settings.");
+  },{enableHighAccuracy:true,maximumAge:2000,timeout:10000});
+}
+function placeUser(pos){
+  if(!MAP)return;
+  if(posMarker)MAP.removeLayer(posMarker);
+  posMarker=L.marker(pos,{icon:userIcon()}).addTo(MAP);
+  if(accCircle)MAP.removeLayer(accCircle);
+  if(S.acc)accCircle=L.circle(pos,{radius:S.acc,color:"#7fc3d6",weight:1,fillOpacity:.08}).addTo(MAP);
+  MAP.setView(pos,17);
+  drawLine();
+}
+function metresToYards(m){return Math.round(m*1.09361);}
+function dist(a,b){
+  // Haversine — does NOT depend on Leaflet, so yardages work even if the map fails
+  const R=6371000, toRad=x=>x*Math.PI/180;
+  const lat1=a[0]??a.lat, lon1=a[1]??a.lng, lat2=b[0]??b.lat, lon2=b[1]??b.lng;
+  const dLat=toRad(lat2-lat1), dLon=toRad(lon2-lon1);
+  const s=Math.sin(dLat/2)**2+Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
+  return 2*R*Math.asin(Math.sqrt(s));
+}
+function updateYards(){
+  const {hole}=currentGpsHole();
+  if(!userPos){return;}
+  const mid=hole.green;
+  // derive front/back ~ ±18m along the line user->green
+  const dMid=dist(userPos,mid);
+  const yMid=metresToYards(dMid);
+  const set=(id,v)=>{const e=document.getElementById(id);if(e)e.textContent=v;};
+  set("yardmid",yMid+' <span style="font-size:18px;color:var(--cream-dim)">yds</span>');
+  set("ymid2",yMid);
+  set("yfront",Math.max(0,yMid-18));
+  set("yback",yMid+18);
+}
+function drawLine(){
+  if(!MAP||!userPos)return;
+  if(lineLayer)MAP.removeLayer(lineLayer);
+  const target=ballMarker?ballMarker.getLatLng():currentGpsHole().hole.green;
+  lineLayer=L.polyline([userPos,target],{color:"#c8f04a",weight:2,dashArray:"6 6"}).addTo(MAP);
+}
+function updateShotCard(latlng){
+  const sc=document.getElementById("shotcard");if(!sc)return;
+  sc.classList.remove("hidden");
+  const {hole}=currentGpsHole();
+  let txt="";
+  if(userPos){
+    const toBall=metresToYards(dist(userPos,latlng));
+    const ballToGreen=metresToYards(dist([latlng.lat,latlng.lng],hole.green));
+    txt=`${toBall} yds out · ${ballToGreen} to green`;
+  } else {
+    const ballToGreen=metresToYards(dist([latlng.lat,latlng.lng],hole.green));
+    txt=`${ballToGreen} yds to green (enable GPS for shot distance)`;
+  }
+  document.getElementById("shotdist").textContent=txt;
+  document.getElementById("clearshot").onclick=()=>{if(ballMarker)MAP.removeLayer(ballMarker);ballMarker=null;if(lineLayer&&userPos)drawLine();sc.classList.add("hidden");};
+}
+function setPinHere(hole){
+  if(!userPos){toast("Enable GPS first");return;}
+  hole.green=[...userPos];hole.approx=false;
+  toast("Pin locked 🎯 yardages now accurate");
+  initMap();
+}
+
+// =================== BOOT ===================
+render();
+</script>
+</body>
+</html>
