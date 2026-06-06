@@ -7,6 +7,8 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#0a1410">
+<link rel="apple-touch-icon" href="https://ovurkxdikebjbgisvnpf.supabase.co/storage/v1/object/public/photos/TeeEscapelogo.png">
+<link rel="icon" type="image/png" href="https://ovurkxdikebjbgisvnpf.supabase.co/storage/v1/object/public/photos/TeeEscapelogo.png">
 <title>Tee Escape</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -257,6 +259,7 @@ const COURSES = {
 };
 
 const AVATAR_COLORS=["#c8f04a","#e8b84b","#7fc3d6","#c2643c","#34a35a","#d98cb3","#9b8cff","#f0a35e","#6fd3c0","#e07a7a","#86b1f0","#cdd3d6"];
+const LOGO_URL="https://ovurkxdikebjbgisvnpf.supabase.co/storage/v1/object/public/photos/TeeEscapelogo.png";
 const BANTER=[
  "Wallet out, loser buys the bacon rolls.",
  "That's going in the group chat.",
@@ -918,16 +921,8 @@ function renderError(app,err){
 function Topbar(){
   const t=el("div","topbar");
   t.innerHTML=`<div class="brand">
-    <svg class="flag" viewBox="0 0 44 44" fill="none">
-      <circle cx="22" cy="22" r="21" stroke="var(--gold)" stroke-width="1.5" opacity="0.5"/>
-      <!-- flag -->
-      <path d="M33 9v15" stroke="var(--gold)" stroke-width="1.8" stroke-linecap="round"/>
-      <path d="M33 10l7 2.5-7 2.5z" fill="var(--gold)"/>
-      <!-- seated golfer silhouette -->
-      <path d="M11 31c0-1 .5-2 1.5-2.2l3-.6 1.2-5.5c.3-1.3 1.3-2.1 2.5-2.1 1.4 0 2.4 1 2.4 2.4l-.1 6.8c0 .9-.6 1.6-1.5 1.7l-7 .9c-1 .1-2-.4-2-1.1z" fill="var(--cream)"/>
-      <circle cx="20.5" cy="16.5" r="2.6" fill="var(--cream)"/>
-      <path d="M12 31l1.5 4M20 31l1.5 4" stroke="var(--cream)" stroke-width="1.6" stroke-linecap="round"/>
-    </svg>
+    <img class="flag" src="${LOGO_URL}" alt="Tee Escape" style="width:38px;height:38px;object-fit:contain;border-radius:8px"
+      onerror="this.style.display='none'"/>
     <div><h1>TEE <span>ESCAPE</span></h1><div class="brand-sub">Dads Golf Club</div></div>
   </div>`;
   return t;
@@ -954,10 +949,16 @@ function Nav(){
 // ---------- GATE (create / join group) ----------
 function Gate(){
   const w=el("div");
+  // splash logo
+  const splash=el("div","center");splash.style.cssText="padding:18px 0 6px";
+  splash.innerHTML=`<img src="${LOGO_URL}" alt="Tee Escape" style="width:130px;height:130px;object-fit:contain;filter:drop-shadow(0 8px 24px rgba(0,0,0,.4))" onerror="this.style.display='none'"/>
+    <div class="display" style="font-size:30px;color:var(--cream);margin-top:6px">TEE <span style="color:var(--gold)">ESCAPE</span></div>
+    <div class="brand-sub" style="text-align:center">Dads Golf Club</div>`;
+  w.appendChild(splash);
   const hero=el("div","card");
   hero.style.background="linear-gradient(150deg, var(--green-600), var(--green-700))";
   hero.innerHTML=`<div class="eyebrow">Welcome to the clubhouse</div>
-    <div class="display" style="font-size:34px;color:var(--cream);margin:6px 0 8px">Get the<br><span style="color:var(--gold)">dads</span> together</div>
+    <div class="display" style="font-size:30px;color:var(--cream);margin:6px 0 8px">Get the<br><span style="color:var(--gold)">dads</span> together</div>
     <div class="muted mini" style="margin-bottom:6px">Find time. Hit bombs. Leave the chaos behind.</div>
     <div class="muted mini">Create a group and share the code, or join with one a mate gave you. Everyone with the code sees the same games, scores and leaderboard.</div>`;
   w.appendChild(hero);
