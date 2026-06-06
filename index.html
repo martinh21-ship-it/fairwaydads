@@ -702,7 +702,8 @@ async function cloudPull(){
     // rounds
     const cloudRounds=rounds.map(roundFromCloud);
     const live=cloudRounds.find(r=>!r.done);
-    const finished=cloudRounds.filter(r=>r.done).reverse();
+    // cloud returns newest-first (created_at.desc); keep that so S.rounds[0] is the latest.
+    const finished=cloudRounds.filter(r=>r.done);
     // don't clobber a round I'm actively editing locally unless cloud is newer
     if(S.active&&live&&S.active.cloudId===live.cloudId){
       if(new Date(live._updated)>new Date(S.active._updated||0)){
@@ -1232,10 +1233,10 @@ function Home(){
   w.appendChild(EscapeWindows());
 
   // latest result + comments (replaces the old Banter tab)
-  const lastDone=S.rounds.find(r=>r.done!==false);
+  const lastDone=S.rounds.filter(r=>r.done!==false).sort((a,b)=>(b.date||0)-(a.date||0))[0];
   if(lastDone){
-    // self-heal: older rounds (finished on a previous build) may lack a summary/report
-    if(!lastDone.summary){ try{ lastDone.summary=computeSummary(lastDone); }catch(e){} }
+    // always recompute from current player data so names/winners are never stale
+    try{ lastDone.summary=computeSummary(lastDone); }catch(e){}
     if(!lastDone.report){ try{ lastDone.report=generateReport(lastDone); }catch(e){} }
     const c=COURSES[lastDone.course]||{short:"Course"};
     const card=el("div","card");
@@ -1654,40 +1655,55 @@ function Play(){
   // hole header card
   const hc=el("div","card");
   const photoUrl=holePhotoUrl(r.course,hole);
-  const photoHtml = photoUrl
-    ? `<div style="position:relative;height:140px;border-radius:12px;overflow:hidden;margin:-4px -4px 12px">
-         <img src="${photoUrl}" alt="${hole.name}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover" onerror="this.parentElement.style.display='none'"/>
-         <div style="position:absolute;inset:0;background:linear-gradient(180deg, rgba(10,20,16,.1) 40%, rgba(10,20,16,.75) 100%)"></div>
-         <div style="position:absolute;left:12px;bottom:9px"><div class="display" style="font-size:20px;color:var(--cream);text-shadow:0 2px 8px rgba(0,0,0,.6)">${hole.name}</div></div>
-       </div>`
-    : "";
-  hc.innerHTML=`${photoHtml}<div class="holehead">
-    <div class="holenum">${hole.n}</div>
-    <div class="holemeta"><div class="nm">${hole.name}</div><div class="pr">Par ${hole.par} · ${hole.yards} yds · SI ${hole.si}</div></div>
-  </div>`;
-  // progress dots
-  const prog=el("div","row");prog.style.gap="5px";prog.style.flexWrap="wrap";prog.style.marginTop="4px";
+  if(photoUrl){
+    // photo background with hole number, name and stats overlaid — single clean unit
+    hc.style.cssText="position:relative;padding:0;overflow:hidden;min-height:170px";
+    hc.innerHTML=`
+      <img src="${photoUrl}" alt="${hole.name}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover"
+        onerror="this.style.display='none';this.parentElement.querySelector('.fallback').style.display='block'"/>
+      <div style="position:absolute;inset:0;background:linear-gradient(180deg, rgba(10,20,16,.55) 0%, rgba(10,20,16,.15) 45%, rgba(10,20,16,.8) 100%)"></div>
+      <div class="fallback" style="display:none;position:absolute;inset:0;background:var(--green-700)"></div>
+      <div style="position:relative;padding:16px;min-height:170px;display:flex;flex-direction:column;justify-content:space-between">
+        <div style="display:flex;align-items:flex-start;gap:10px">
+          <div class="display" style="font-size:40px;line-height:.85;color:var(--gold);text-shadow:0 2px 10px rgba(0,0,0,.7)">${hole.n}</div>
+          <div style="padding-top:2px"><div class="mini" style="color:var(--cream-dim);text-shadow:0 1px 4px rgba(0,0,0,.8)">HOLE ${hole.n}</div></div>
+        </div>
+        <div>
+          <div class="display" style="font-size:26px;color:var(--cream);text-shadow:0 2px 10px rgba(0,0,0,.85);line-height:1">${hole.name}</div>
+          <div class="mini" style="color:var(--cream);font-weight:600;text-shadow:0 1px 6px rgba(0,0,0,.9);margin-top:3px">Par ${hole.par} · ${hole.yards} yds · SI ${hole.si}</div>
+        </div>
+      </div>`;
+  } else {
+    hc.innerHTML=`<div class="holehead">
+      <div class="holenum">${hole.n}</div>
+      <div class="holemeta"><div class="nm">${hole.name}</div><div class="pr">Par ${hole.par} · ${hole.yards} yds · SI ${hole.si}</div></div>
+    </div>`;
+  }
+  w.appendChild(hc);
+
+  // progress dots + shot badge in their own block below the header
+  const meta=el("div","card tight");meta.style.cssText="margin-top:10px";
+  const prog=el("div","row");prog.style.gap="5px";prog.style.flexWrap="wrap";
   holes.forEach((h,i)=>{
     const done=r.players.every(pid=>r.scores[pid]?.[h.n]);
-    const d=el("span");d.style.cssText=`width:9px;height:9px;border-radius:50%;background:${i===idx?'var(--lime)':done?'var(--green-400)':'rgba(255,255,255,.16)'};${i===idx?'box-shadow:0 0 8px var(--lime)':''}`;
+    const d=el("span");d.style.cssText=`width:9px;height:9px;border-radius:50%;cursor:pointer;background:${i===idx?'var(--lime)':done?'var(--green-400)':'rgba(255,255,255,.16)'};${i===idx?'box-shadow:0 0 8px var(--lime)':''}`;
     d.onclick=()=>{r.current=i;render();};
     prog.appendChild(d);
   });
-  hc.appendChild(prog);
+  meta.appendChild(prog);
 
   // "You get a shot here" badge for the viewer
   if(S.meId && r.players.includes(S.meId)){
     const info=strokeInfo(r,S.meId,hole);
     if(info.shots>0){
       const badge=el("div","");
-      badge.style.cssText="margin-top:12px;background:rgba(217,169,78,.15);border:1px solid var(--gold);border-radius:12px;padding:9px 13px;display:flex;align-items:center;gap:9px";
-      const dots="🔵".repeat(0); // placeholder, use text
+      badge.style.cssText="margin-top:10px;background:rgba(217,169,78,.15);border:1px solid var(--gold);border-radius:12px;padding:9px 13px;display:flex;align-items:center;gap:9px";
       badge.innerHTML=`<span style="font-size:18px">${info.shots>1?'⛳⛳':'⛳'}</span>
         <span style="font-weight:700;color:var(--gold);font-size:14px">You get ${info.shots>1?info.shots+' shots':'a shot'} here${info.context?' <span style="color:var(--cream-dim);font-weight:500">'+info.context+'</span>':''}</span>`;
-      hc.appendChild(badge);
+      meta.appendChild(badge);
     }
   }
-  w.appendChild(hc);
+  w.appendChild(meta);
 
   // Single nominated scorer model: the scorer keeps everyone's card; others watch live.
   const scorerPlayer = S.players.find(p=>p.id===r.scorer);
@@ -2311,7 +2327,7 @@ function playerStats(pid){
   Object.values(byHole).forEach(o=>{if(o.n>=2){const avg=o.tot/o.n;if(!nem||avg>nem.avg)nem={avg,h:o.ref,n:o.n};}});
   s.nemesis=nem;
   // net scoring trend per round (for sparkline)
-  s.trend=allRounds().filter(r=>r.players.includes(pid)).map(r=>({date:r.date,net:netTotalFor(r,pid)})).filter(x=>x.net>0);
+  s.trend=allRounds().filter(r=>r.players.includes(pid)).map(r=>({date:r.date,net:netTotalFor(r,pid)})).filter(x=>x.net>0).sort((a,b)=>a.date-b.date);
   return s;
 }
 
@@ -2437,19 +2453,42 @@ function BoardRounds(){
     w.appendChild(el("div","card empty",`<div class="ico">📋</div>No rounds played yet.`));
     return w;
   }
-  [...S.rounds].reverse().forEach(r=>{
-    const c=COURSES[r.course];
+  // newest first (S.rounds is already newest-first, but sort by date to be safe)
+  [...S.rounds].sort((a,b)=>(b.date||0)-(a.date||0)).forEach(r=>{
+    const c=COURSES[r.course]||{short:"Course"};
+    // recompute summary so winner names reflect current players
+    try{ r.summary=computeSummary(r); }catch(e){}
+    if(!r.report){ try{ r.report=generateReport(r); }catch(e){} }
     const card=el("div","card");
     if(r.id===S.justFinished)card.style.borderColor="var(--lime)";
     const d=new Date(r.date);
     card.innerHTML=`<div class="row between"><span class="tag" style="background:rgba(200,240,74,.15);color:var(--lime)">${fmtFormat(r.format)}</span>
       <span class="muted mini">${d.toLocaleDateString('en-GB',{day:'numeric',month:'short'})} · ${c.short} · ${r.holes}H</span></div>
-      <div class="serif" style="font-size:20px;margin:8px 0 4px;color:var(--cream)">${r.summary?.text||''} 🏆</div>`;
-    const toggle=el("button","btn btn-ghost btn-sm","Scorecard");toggle.style.marginTop="8px";
+      <div class="serif" style="font-size:20px;margin:8px 0 4px;color:var(--cream)">${r.summary?.text||'Round complete'} 🏆</div>`;
+    const btns=el("div","row");btns.style.cssText="gap:8px;margin-top:8px";
+    // report toggle
+    if(r.report){
+      const repBtn=el("button","btn btn-ghost btn-sm","📰 Report");
+      const repw=el("div","hidden");repw.style.marginTop="10px";
+      repw.appendChild(el("div","banter",`"${r.report}"`));
+      repBtn.onclick=()=>{repw.classList.toggle("hidden");};
+      btns.appendChild(repBtn);
+      card.appendChild(btns);
+      card.appendChild(repw);
+    } else {
+      card.appendChild(btns);
+    }
+    // scorecard toggle
+    const toggle=el("button","btn btn-ghost btn-sm","Scorecard");
+    btns.appendChild(toggle);
     const scw=el("div","hidden");scw.style.marginTop="10px";
     let built=false;
     toggle.onclick=()=>{if(!built){scw.appendChild(Scorecard(r));built=true;}scw.classList.toggle("hidden");};
-    card.appendChild(toggle);card.appendChild(scw);
+    card.appendChild(scw);
+    // open full thread + comments
+    const open=el("button","btn btn-ghost btn-sm","💬 Comments");
+    open.onclick=()=>{S.openResult=r.cloudId||r.id;S.tab="result";render();};
+    btns.appendChild(open);
     w.appendChild(card);
   });
   S.justFinished=null;
