@@ -666,13 +666,17 @@ function compressImage(file,maxDim,quality){
 
 // ---- banter loading into local cache (keyed by round) ----
 async function loadBanter(roundId){
-  if(!S.cloud)return [];
+  if(!S.cloud)return false;
   try{
     const rows=await cloudGetBanter(S.cloud.groupId,roundId);
     S.banterCache=S.banterCache||{};
-    S.banterCache[roundId||"group"]=rows;
-    return rows;
-  }catch(e){console.warn("banter load failed",e);return [];}
+    const key=roundId||"group";
+    const prev=S.banterCache[key];
+    const sig=rows.map(b=>b.id+(b.reactions?JSON.stringify(b.reactions):'')).join(',');
+    const prevSig=prev?prev.map(b=>b.id+(b.reactions?JSON.stringify(b.reactions):'')).join(','):null;
+    S.banterCache[key]=rows;
+    return sig!==prevSig;   // true only if comments/reactions changed
+  }catch(e){console.warn("banter load failed",e);return false;}
 }
 
 
@@ -728,7 +732,16 @@ async function cloudPull(){
     S.rounds=finished;
     CLOUD_OK=true;
     LAST_PULL=Date.now();
-  }catch(e){ console.warn("pull failed",e); }
+    // fingerprint the data so callers can skip re-rendering when nothing changed (stops the blink)
+    const sig=JSON.stringify({
+      pl:S.players.map(p=>p.id+p.name+p.hcp+(p.photo||'')),
+      rd:S.rounds.map(r=>r.cloudId+'|'+(r._updated||'')+'|'+(r.done?1:0)),
+      act:S.active?(S.active.cloudId+'|'+(S.active._updated||'')):'none'
+    });
+    const changed = sig!==S._pullSig;
+    S._pullSig=sig;
+    return changed;
+  }catch(e){ console.warn("pull failed",e); return false; }
 }
 
 // debounced push — the nominated scorer is the authority for the card
@@ -748,10 +761,12 @@ function startSync(){
   stopSync();
   if(!S.cloud||!S.cloud.groupId)return;
   SYNC_TIMER=setInterval(async()=>{
-    await cloudPull();
+    const changed=await cloudPull();
+    let banterChanged=false;
     if(S.tab==="gps") await loadPins();
-    if(S.tab==="result"&&S.openResult) await loadBanter(S.openResult);
-    if(S.tab==="play"||S.tab==="board"||S.tab==="home"||S.tab==="result")render();
+    if(S.tab==="result"&&S.openResult){ banterChanged=await loadBanter(S.openResult); }
+    // only redraw if something actually changed — otherwise the screen flashes needlessly
+    if((changed||banterChanged) && (S.tab==="play"||S.tab==="board"||S.tab==="home"||S.tab==="result")) render();
   },4000);
 }
 function stopSync(){ if(SYNC_TIMER)clearInterval(SYNC_TIMER); SYNC_TIMER=null; }
@@ -1259,7 +1274,7 @@ function Home(){
     const rid=lastDone.cloudId||lastDone.id;
     const cached=(S.banterCache&&S.banterCache[rid])||null;
     if(!cached){
-      loadBanter(rid).then(rows=>{ if(S.tab==="home" && rows && rows.length) render(); });
+      loadBanter(rid).then(changed=>{ if(changed && S.tab==="home") render(); });
     }
   }
 
@@ -1814,7 +1829,7 @@ function BanterFeed(){
   }
 
   // preload comment counts for these rounds in the background
-  results.forEach(r=>{ if(!S.banterCache||!S.banterCache[r.cloudId]) loadBanter(r.cloudId).then(rows=>{ if(rows.length && S.tab==="banter" && !S.openResult) render(); }); });
+  results.forEach(r=>{ if(!S.banterCache||!S.banterCache[r.cloudId]) loadBanter(r.cloudId).then(changed=>{ if(changed && S.tab==="banter" && !S.openResult) render(); }); });
 
   results.forEach(r=>{
     const c=COURSES[r.course];
@@ -1873,7 +1888,7 @@ function ResultThread(roundId){
 
   // load thread
   const posts=(S.banterCache&&S.banterCache[roundId])||[];
-  loadBanter(roundId).then(rows=>{ if(rows.length!==posts.length && S.tab==="result" && S.openResult===roundId)render(); });
+  loadBanter(roundId).then(changed=>{ if(changed && S.tab==="result" && S.openResult===roundId)render(); });
 
   // highlights (auto-posts) shown as pinned talking points
   const autos=posts.filter(p=>!p.author_id);
@@ -2251,6 +2266,12 @@ async function abortRound(){
 }
 
 function computeSummary(r){
+  // solo round — record it for stats, but it's not a "win" over anyone
+  if(r.players.length<2){
+    const id=r.players[0];
+    if(r.format==="stableford"){return{type:"solo",text:`Solo knock — ${stablefordPoints(r,id)} pts`,winners:[],solo:true};}
+    return{type:"solo",text:`Solo knock — net ${netTotal(r,id)}`,winners:[],solo:true};
+  }
   if(r.format==="match"&&r.players.length===2){
     const res=matchPlayResult(r,r.players[0],r.players[1]);
     const A=S.players.find(p=>p.id===r.players[0]),B=S.players.find(p=>p.id===r.players[1]);
@@ -2397,10 +2418,15 @@ function seasonStandings(){
   const map={};
   S.players.forEach(p=>map[p.id]={id:p.id,name:p.name,color:p.color,pts:0,wins:0,played:0});
   S.rounds.forEach(r=>{
+    // recompute so solo rounds (and renamed players) are handled correctly
+    let sum=r.summary; try{ sum=computeSummary(r); }catch(e){}
+    const winners=(sum&&sum.winners)||[];
+    const solo=r.players.length<2;
     r.players.forEach(pid=>{if(map[pid])map[pid].played++;});
-    (r.summary?.winners||[]).forEach(w=>{if(map[w]){map[w].wins++;map[w].pts+=3;}});
-    // participation point
-    r.players.forEach(pid=>{if(map[pid]&&!(r.summary?.winners||[]).includes(pid))map[pid].pts+=1;});
+    if(!solo){
+      winners.forEach(w=>{if(map[w]){map[w].wins++;map[w].pts+=3;}});
+      r.players.forEach(pid=>{if(map[pid]&&!winners.includes(pid))map[pid].pts+=1;});
+    }
   });
   return Object.values(map).filter(p=>p.played>0).sort((a,b)=>b.pts-a.pts||b.wins-a.wins);
 }
