@@ -328,7 +328,8 @@ async function loadWeather(force){
       const {latitude:lat,longitude:lon}=pos.coords;
       const url=`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}`+
         `&current=temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,precipitation`+
-        `&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,wind_speed_10m_max`+
+        `&hourly=precipitation_probability,weather_code,temperature_2m`+
+        `&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,wind_speed_10m_max,sunrise,sunset`+
         `&timezone=auto&wind_speed_unit=mph&forecast_days=2`;
       const r=await fetch(url);
       if(!r.ok)throw new Error("weather "+r.status);
@@ -374,7 +375,63 @@ function golfAdvice(kind, tmax, rainProb, windMax){
   return pick(cloudy);
 }
 
-// =================== ELEVATION ===================
+// Find dry escape windows: runs of consecutive daylight hours with 0% rain, >= minHours long.
+function dryWindows(minHours){
+  const W=WEATHER; if(!W||!W.hourly||!W.hourly.time)return [];
+  const times=W.hourly.time, probs=W.hourly.precipitation_probability||[], codes=W.hourly.weather_code||[], temps=W.hourly.temperature_2m||[];
+  // daylight bounds per day from daily sunrise/sunset
+  const sr=(W.daily&&W.daily.sunrise)||[], ss=(W.daily&&W.daily.sunset)||[];
+  function dayKey(iso){return iso.slice(0,10);}
+  const sunriseFor={}, sunsetFor={};
+  sr.forEach((s,i)=>{sunriseFor[dayKey(s)]=new Date(s).getTime();});
+  ss.forEach((s,i)=>{sunsetFor[dayKey(s)]=new Date(s).getTime();});
+  const now=Date.now();
+  const windows=[];
+  let run=null;
+  for(let i=0;i<times.length;i++){
+    const t=new Date(times[i]).getTime();
+    const dk=dayKey(times[i]);
+    const dawn=sunriseFor[dk], dusk=sunsetFor[dk];
+    const daylight = (!dawn||!dusk) ? true : (t>=dawn-1800000 && t<=dusk-3600000); // playable: from ~sunrise to 1h before sunset
+    const dry = (probs[i]||0)===0;
+    const future = t>=now-3600000; // ignore hours already passed
+    if(dry && daylight && future){
+      if(!run)run={start:t,startIso:times[i],codes:[],temps:[]};
+      run.end=t+3600000; run.codes.push(codes[i]); run.temps.push(temps[i]);
+    } else {
+      if(run){ pushWindow(windows,run,minHours); run=null; }
+    }
+  }
+  if(run)pushWindow(windows,run,minHours);
+  return windows.slice(0,4); // cap
+}
+function pushWindow(arr,run,minHours){
+  const hrs=(run.end-run.start)/3600000;
+  if(hrs>=minHours){
+    const avgT=Math.round(run.temps.reduce((a,b)=>a+b,0)/run.temps.length);
+    // pick a representative code (most common)
+    const cc={}; run.codes.forEach(c=>cc[c]=(cc[c]||0)+1);
+    const code=+Object.keys(cc).sort((a,b)=>cc[b]-cc[a])[0];
+    arr.push({start:run.start,end:run.end,hours:hrs,temp:avgT,code});
+  }
+}
+function fmtWindowTime(ts){
+  const d=new Date(ts);
+  return d.toLocaleTimeString('en-GB',{hour:'numeric',minute:'2-digit',hour12:true}).replace(':00','');
+}
+function fmtWindowDay(ts){
+  const d=new Date(ts), now=new Date();
+  const isToday=d.toDateString()===now.toDateString();
+  const tom=new Date(now);tom.setDate(now.getDate()+1);
+  const isTom=d.toDateString()===tom.toDateString();
+  return isToday?"Today":isTom?"Tomorrow":d.toLocaleDateString('en-GB',{weekday:'long'});
+}
+const WINDOW_QUIPS=["Clear run — slip out before anyone notices.",
+  "Bone dry. The perfect alibi window.",
+  "Not a drop forecast. Tee sheet's calling.",
+  "Dry as you like — go on, you've earned it.",
+  "Window's open. The garden can wait."];
+
 let ELEV_CACHE={};
 function elevKey(lat,lon){return lat.toFixed(4)+","+lon.toFixed(4);}
 async function getElevation(lat,lon){
@@ -468,7 +525,7 @@ async function cloudGetPlayers(groupId){
 async function cloudCreateRound(r){
   const body={group_id:S.cloud.groupId,course:r.course,holes:r.holes,nine:r.nine,
     format:r.format,player_ids:r.players,team_a:r.teamA,team_b:r.teamB,
-    scores:r.scores,tracking:r.tracking||{},status:"live"};
+    scores:r.scores,tracking:{scorer:r.scorer||null},status:"live"};
   const rows=await cloudFetch("/rounds",{method:"POST",
     headers:Object.assign({Prefer:"return=representation"},CLOUD.headers),
     body:JSON.stringify(body)});
@@ -476,7 +533,7 @@ async function cloudCreateRound(r){
 }
 async function cloudUpdateRound(r){
   await cloudFetch("/rounds?id=eq."+r.cloudId,{method:"PATCH",
-    body:JSON.stringify({scores:r.scores,tracking:r.tracking||{},status:r.done?"done":"live",
+    body:JSON.stringify({scores:r.scores,tracking:{scorer:r.scorer||null},status:r.done?"done":"live",
       summary:r.summary||null})});
 }
 async function cloudGetRounds(groupId){
@@ -485,6 +542,11 @@ async function cloudGetRounds(groupId){
 async function cloudGetRound(id){
   const rows=await cloudFetch("/rounds?id=eq."+id+"&select=*");
   return rows[0]||null;
+}
+async function cloudDeleteRound(id){
+  // remove the round (banter rows reference it with on-delete set null, so clear them too)
+  try{ await cloudFetch("/banter?round_id=eq."+id,{method:"DELETE"}); }catch(e){}
+  await cloudFetch("/rounds?id=eq."+id,{method:"DELETE"});
 }
 
 // ---- pins (shared green locations) ----
@@ -588,7 +650,8 @@ function roundFromCloud(row){
     id:row.id, cloudId:row.id, date:new Date(row.created_at).getTime(),
     course:row.course, holes:row.holes, nine:row.nine, format:row.format,
     players:row.player_ids||[], teamA:row.team_a||[], teamB:row.team_b||[],
-    scores:row.scores||{}, tracking:row.tracking||{}, current:0,
+    scorer:(row.tracking&&row.tracking.scorer)||null,
+    scores:row.scores||{}, current:0,
     done:row.status==="done", summary:row.summary||null, banter:[],
     _updated:row.updated_at
   };
@@ -617,6 +680,17 @@ async function cloudPull(){
       }
     } else if(!S.active && live){
       S.active=live;
+    } else if(S.active && S.active.cloudId){
+      // my active round is no longer the live cloud round — aborted or finished elsewhere.
+      const match=cloudRounds.find(r=>r.cloudId===S.active.cloudId);
+      if(!match){
+        S.active=null;
+        if(S.tab==="play"){S.tab="home"; toast("The scorer ended this round");}
+      } else if(match.done){
+        // scorer finished it — move it to history view for the watcher
+        S.active=null;
+        if(S.tab==="play"){S.tab="banter"; S.openResult=match.cloudId; toast("Round finished — result's in");}
+      }
     }
     S.rounds=finished;
     CLOUD_OK=true;
@@ -624,37 +698,17 @@ async function cloudPull(){
   }catch(e){ console.warn("pull failed",e); }
 }
 
-// debounced push — merge-safe so each phone only writes its own slice
+// debounced push — the nominated scorer is the authority for the card
 function cloudPushSoon(){
   if(!S.cloud||!S.active||!S.active.cloudId)return;
   S.active._updated=new Date().toISOString();
   clearTimeout(PUSH_TIMER);
   PUSH_TIMER=setTimeout(async()=>{
     try{
-      const r=S.active;
-      // pull the freshest cloud copy and merge other players' data so we don't clobber them
-      const fresh=await cloudGetRound(r.cloudId);
-      if(fresh){
-        const mergedScores=Object.assign({},fresh.scores||{},{}); 
-        const mergedTrack=Object.assign({},fresh.tracking||{},{});
-        // overlay every player slice I currently hold locally (covers single-scorer mode too)
-        Object.keys(r.scores||{}).forEach(pid=>{
-          // in my-card mode only overwrite my own slice; otherwise overwrite all I'm scoring
-          const meInRound=S.meId&&r.players.includes(S.meId);
-          if(!meInRound || pid===S.meId){
-            mergedScores[pid]=r.scores[pid];
-            if(r.tracking&&r.tracking[pid])mergedTrack[pid]=r.tracking[pid];
-          } else {
-            // keep cloud's version for others, but seed if missing
-            if(!mergedScores[pid])mergedScores[pid]=r.scores[pid];
-          }
-        });
-        r.scores=mergedScores; r.tracking=mergedTrack;
-      }
-      await cloudUpdateRound(r);
+      await cloudUpdateRound(S.active);
       CLOUD_OK=true;
     }catch(e){ console.warn("push failed",e); }
-  },600);
+  },500);
 }
 
 function startSync(){
@@ -1085,6 +1139,7 @@ function Home(){
 
   // weather + cheeky advice
   w.appendChild(WeatherCard());
+  w.appendChild(EscapeWindows());
 
   // quick standings
   if(S.rounds.length){
@@ -1176,6 +1231,36 @@ function WeatherCard(){
     strip.appendChild(box);
   });
   card.appendChild(strip);
+  return card;
+}
+
+function EscapeWindows(){
+  const card=el("div","card");
+  if(!WEATHER||!WEATHER.hourly){
+    // weather still loading; show nothing rather than an empty box
+    return el("div","");
+  }
+  const wins=dryWindows(2);
+  card.innerHTML=`<div class="eyebrow">🍃 Escape windows · next 2 days</div>`;
+  if(!wins.length){
+    card.appendChild(el("div","mini muted",`No fully-dry 2-hour windows in the forecast. Either tough it out in the waterproofs… or it's a 19th-hole kind of week.`));
+    return card;
+  }
+  card.appendChild(el("div","mini muted",`Dry daylight slots long enough for a cheeky 9:`));
+  wins.forEach((win,i)=>{
+    const [lbl,emo]=wmo(win.code);
+    const row=el("div","");
+    row.style.cssText="display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid rgba(255,255,255,.07)";
+    const hrsTxt = win.hours>=4?`${Math.floor(win.hours)}h — time for 18`:`${Math.floor(win.hours)}h — quick 9`;
+    row.innerHTML=`<div style="font-size:26px">${emo}</div>
+      <div style="flex:1">
+        <div style="font-weight:700;color:var(--cream)">${fmtWindowDay(win.start)} · ${fmtWindowTime(win.start)}–${fmtWindowTime(win.end)}</div>
+        <div class="mini muted">${hrsTxt} · ${win.temp}° · dry</div>
+      </div>
+      <div class="tag" style="background:rgba(217,169,78,.15);color:var(--gold)">0% 🌧</div>`;
+    card.appendChild(row);
+  });
+  card.appendChild(el("div","banter",`“${pick(WINDOW_QUIPS)}”`));
   return card;
 }
 function fmtFormat(f){return {stroke:"Stroke Play",match:"Match Play",team:"Team Match Play",skins:"Skins"}[f]||f;}
@@ -1403,10 +1488,12 @@ async function startRound(){
     id:uid(),date:Date.now(),
     course:st.course,holes:st.holes,nine:st.nine,format:st.format,
     players:[...st.players],teamA:[...st.teamA],teamB:[...st.teamB],
-    scores:{},tracking:{},current:0,banter:[]
+    scorer:S.meId||null,   // whoever starts keeps the card
+    scores:{},current:0,banter:[]
   };
-  st.players.forEach(p=>{r.scores[p]={};r.tracking[p]={};});
+  st.players.forEach(p=>{r.scores[p]={};});
   S.active=r;
+  S.iAmScorer=true;   // this device started it
   S.setup={};
   S.tab="play";render();
   // create in cloud
@@ -1415,7 +1502,7 @@ async function startRound(){
     S.active.cloudId=row.id;
     S.active._updated=row.updated_at;
     persist();
-    toast("Good luck, dads 🍀 everyone can join this game");
+    toast("You're keeping the card 📝 the dads can watch live");
   }catch(e){
     toast("Started offline — will sync when connected");
   }
@@ -1429,12 +1516,17 @@ function Play(){
   const hole=holes[idx];
   const w=el("div");
 
+  // am I the scorer? (mirrors the logic used below for the score steppers)
+  const iAmScorer = (r.scorer && r.scorer===S.meId) || (!r.scorer && S.iAmScorer) || (!r.scorer && !S.meId);
+
   // top status bar
   const top=el("div","row between");top.style.margin="2px 0 12px";
   top.innerHTML=`<span class="tag live">● LIVE</span><span class="muted mini">${c.short} · ${fmtFormat(r.format)} · ${r.holes}H</span>`;
-  const finishBtn=el("button","del","Finish ▸");
-  finishBtn.onclick=()=>finishRound();
-  top.appendChild(finishBtn);
+  if(iAmScorer){
+    const finishBtn=el("button","del","Finish ▸");
+    finishBtn.onclick=()=>finishRound();
+    top.appendChild(finishBtn);
+  }
   w.appendChild(top);
 
   // hole header card
@@ -1467,31 +1559,34 @@ function Play(){
   }
   w.appendChild(hc);
 
-  // Determine "my card" mode: if I've set who I am and I'm in this round,
-  // I score only myself; everyone else is read-only. If no identity set,
-  // fall back to scoring everyone (single shared scorer).
-  const meInRound = S.meId && r.players.includes(S.meId);
-  const orderedPlayers = meInRound
-    ? [S.meId, ...r.players.filter(pid=>pid!==S.meId)]
-    : r.players;
+  // Single nominated scorer model: the scorer keeps everyone's card; others watch live.
+  const scorerPlayer = S.players.find(p=>p.id===r.scorer);
 
-  orderedPlayers.forEach(pid=>{
+  // banner: who's keeping the card
+  const sb=el("div","card tight");sb.style.cssText="background:rgba(0,0,0,.2);margin-bottom:10px";
+  if(iAmScorer){
+    sb.innerHTML=`<div class="row" style="gap:8px"><span style="font-size:16px">📝</span><span style="font-weight:700;color:var(--gold)">You're keeping the card</span></div>
+      <div class="mini muted" style="margin-top:3px">Enter everyone's scores — the dads see it update live.</div>`;
+  } else {
+    sb.innerHTML=`<div class="row" style="gap:8px"><span style="font-size:16px">👀</span><span style="font-weight:700;color:var(--cream)">${scorerPlayer?scorerPlayer.name.split(' ')[0]+" is keeping the card":"Watching live"}</span></div>
+      <div class="mini muted" style="margin-top:3px">Scores update automatically. Check the GPS tab for your yardages.</div>`;
+  }
+  w.appendChild(sb);
+
+  r.players.forEach(pid=>{
     const p=S.players.find(x=>x.id===pid);
     if(!p)return;
-    const ph=playingHcp(p,r);
     const info=strokeInfo(r,pid,hole);
     const shots=info.shots;
     const v=r.scores[pid]?.[hole.n];
-    const isMe = !meInRound || pid===S.meId; // interactive if it's me, or no-identity fallback
     const sc=scoreClass(v,hole.par);
 
     const row=el("div","pscore");
-    if(pid===S.meId)row.style.borderColor="rgba(200,240,74,.4)";
     row.innerHTML=`<div class="nmblock row">${avatarHTML(p,34)}
-      <div><div class="pn">${p.name}${pid===S.meId?' <span class="mini" style="color:var(--lime)">· you</span>':''}</div>
+      <div><div class="pn">${p.name}</div>
       <div class="sub">${shots>0?'<span style="color:var(--gold)">'+'●'.repeat(shots)+'</span> '+shots+' shot'+(shots>1?'s':''):'No shots'} · net ${v!=null?v-shots:'–'}</div></div></div>`;
 
-    if(isMe){
+    if(iAmScorer){
       const stp=el("div","stepper");
       const minus=el("button","","–");
       const val=el("div","val",v!=null?v:"–");
@@ -1502,31 +1597,11 @@ function Play(){
       stp.appendChild(minus);stp.appendChild(val);stp.appendChild(plus);
       row.appendChild(stp);
     } else {
-      // read-only score display
       const ro=el("div","");ro.style.cssText="flex:none;text-align:center;min-width:54px";
       ro.innerHTML=`<div class="serif" style="font-size:26px;font-weight:900;color:${sc==='eagle'?'var(--gold)':sc==='birdie'?'var(--clay)':v!=null?'var(--cream)':'rgba(255,255,255,.25)'}">${v!=null?v:'–'}</div>`;
       row.appendChild(ro);
     }
     w.appendChild(row);
-
-    // fairway + GIR taps — only for me, only my own
-    if(isMe && (!meInRound || pid===S.meId)){
-      r.tracking=r.tracking||{}; r.tracking[pid]=r.tracking[pid]||{};
-      const tk=r.tracking[pid][hole.n]||{};
-      const trackRow=el("div","row");trackRow.style.cssText="gap:8px;margin:-4px 0 10px 4px";
-      // fairway (hidden on par 3s — no tee shot to fairway)
-      if(hole.par>3){
-        trackRow.appendChild(toggleChip("🛣 Fairway", tk.fw===true, ()=>{
-          tk.fw = tk.fw===true ? null : true;
-          r.tracking[pid][hole.n]=tk; cloudPushSoon(); render();
-        }));
-      }
-      trackRow.appendChild(toggleChip("🟢 Green in reg", tk.gir===true, ()=>{
-        tk.gir = tk.gir===true ? null : true;
-        r.tracking[pid][hole.n]=tk; cloudPushSoon(); render();
-      }));
-      w.appendChild(trackRow);
-    }
   });
 
   // live match / skins status
@@ -1556,6 +1631,20 @@ function Play(){
   gpsBtn.style.marginTop="10px";
   gpsBtn.onclick=()=>{S.gpsHole=hole.n;S.tab="gps";render();};
   w.appendChild(gpsBtn);
+
+  // abort round — scorer only, with confirmation
+  if(iAmScorer){
+    const abortBtn=el("button","");
+    abortBtn.style.cssText="width:100%;margin-top:16px;background:none;border:1px solid rgba(194,100,60,.5);color:var(--clay);border-radius:14px;padding:13px;font-family:'Outfit';font-weight:600;font-size:14px;cursor:pointer";
+    abortBtn.textContent="✕ Abort round";
+    abortBtn.onclick=()=>{
+      if(confirm("Abort this round? It'll be deleted for everyone — no scores, no record, no trace. This can't be undone.")){
+        abortRound();
+      }
+    };
+    w.appendChild(abortBtn);
+    w.appendChild(el("div","mini muted center",`Aborting wipes the round completely — handy if it fell apart or nobody wants it on record. 🤫`));
+  }
 
   return w;
 }
@@ -1909,6 +1998,19 @@ async function finishRound(){
   toast("Result in 🏁 — get the banter going");
 }
 
+async function abortRound(){
+  const r=S.active;
+  if(!r)return;
+  // delete from cloud so it vanishes for everyone
+  if(r.cloudId){
+    try{ await cloudDeleteRound(r.cloudId); }catch(e){ console.warn("abort delete failed",e); }
+  }
+  S.active=null;
+  S.tab="home";
+  render();
+  toast("Round aborted — what happens on tour stays on tour 🤫");
+}
+
 function computeSummary(r){
   if(r.format==="match"&&r.players.length===2){
     const res=matchPlayResult(r,r.players[0],r.players[1]);
@@ -1980,20 +2082,6 @@ function playerStats(pid){
   let nem=null;
   Object.values(byHole).forEach(o=>{if(o.n>=2){const avg=o.tot/o.n;if(!nem||avg>nem.avg)nem={avg,h:o.ref,n:o.n};}});
   s.nemesis=nem;
-  // fairways & greens in regulation from tracking data
-  let firHit=0,firElig=0,girHit=0,girElig=0;
-  allRounds().forEach(r=>{
-    if(!r.players.includes(pid))return;
-    const tk=r.tracking?.[pid]||{};
-    holesInPlayFor(r).forEach(h=>{
-      const g=r.scores?.[pid]?.[h.n]; if(!g)return; // only count played holes
-      const t=tk[h.n]||{};
-      if(h.par>3){firElig++; if(t.fw===true)firHit++;}
-      girElig++; if(t.gir===true)girHit++;
-    });
-  });
-  s.firHit=firHit; s.firElig=firElig; s.firPct=firElig?Math.round(firHit/firElig*100):null;
-  s.girHit=girHit; s.girElig=girElig; s.girPct=girElig?Math.round(girHit/girElig*100):null;
   // net scoring trend per round (for sparkline)
   s.trend=allRounds().filter(r=>r.players.includes(pid)).map(r=>({date:r.date,net:netTotalFor(r,pid)})).filter(x=>x.net>0);
   return s;
@@ -2161,9 +2249,7 @@ function BoardDashboard(){
     {key:"avg",ico:"📉",label:"Scoring avg (net)",val:s=>avgNet(s),hi:false,fmt:v=>v?v.toFixed(1):"–"},
     {key:"vspar",ico:"⛳",label:"Best vs par",val:s=>s.holes?+(s.vsPar/s.holes).toFixed(2):0,hi:false,fmt:v=>v>0?"+"+v:""+v,suf:"/hole"},
     {key:"records",ico:"🏆",label:"Course records",val:s=>0,hi:true,custom:"records"},
-    {key:"blowups",ico:"💣",label:"Fewest blow-ups",val:s=>s.doubles+s.others,hi:false},
-    {key:"fir",ico:"🛣",label:"Fairways %",val:s=>s.firPct==null?-1:s.firPct,hi:true,fmt:v=>v<0?"–":v+"%"},
-    {key:"gir",ico:"🟢",label:"Greens in reg %",val:s=>s.girPct==null?-1:s.girPct,hi:true,fmt:v=>v<0?"–":v+"%"}
+    {key:"blowups",ico:"💣",label:"Fewest blow-ups",val:s=>s.doubles+s.others,hi:false}
   ];
 
   // ---- "who leads what" compact grid ----
@@ -2322,24 +2408,6 @@ function Profile(){
   ringRow.appendChild(counts);
   bc.appendChild(ringRow);
   w.appendChild(bc);
-
-  // ---- accuracy: fairways & greens in regulation ----
-  if(st.firElig>0 || st.girElig>0){
-    const ac=el("div","card");
-    ac.innerHTML=`<div class="eyebrow">Accuracy</div>`;
-    const g=el("div");g.style.cssText="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px";
-    const stat=(label,pct,hit,elig,sub)=>{
-      const box=el("div","card tight");box.style.cssText="margin:0;text-align:center;padding:14px";
-      box.innerHTML=`<div class="serif" style="font-size:32px;font-weight:900;color:var(--lime)">${pct!=null?pct+'%':'–'}</div>
-        <div class="mini" style="font-weight:700;margin-top:2px">${label}</div>
-        <div class="mini muted">${elig?hit+' of '+elig+' '+sub:'no data yet'}</div>`;
-      return box;
-    };
-    g.appendChild(stat("Fairways",st.firPct,st.firHit,st.firElig,"fairways"));
-    g.appendChild(stat("Greens in reg",st.girPct,st.girHit,st.girElig,"greens"));
-    ac.appendChild(g);
-    w.appendChild(ac);
-  }
 
   // ---- net score trend sparkline ----
   if(st.trend.length>=2){
