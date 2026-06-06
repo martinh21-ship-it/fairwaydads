@@ -1072,7 +1072,7 @@ function renderError(app,err){
 function Topbar(){
   const t=el("div","topbar");
   t.innerHTML=`<div class="brand">
-    <img class="flag" src="${LOGO_URL}" alt="Tee Escape" style="width:38px;height:38px;object-fit:contain;border-radius:8px"
+    <img class="flag" src="${LOGO_URL}" alt="Tee Escape" style="width:40px;height:40px;object-fit:cover;border-radius:50%;background:var(--green-700)"
       onerror="this.style.display='none'"/>
     <div><h1>TEE <span>ESCAPE</span></h1><div class="brand-sub">Dads Golf Club</div></div>
   </div>`;
@@ -2648,17 +2648,39 @@ function Profile(){
   const st=playerStats(p.id);
   const awards=groupAwards();
 
-  // back + header
+  // back + big hero header
   const back=el("button","del","◂ All dads");back.onclick=()=>{S.tab="dads";render();};
   w.appendChild(back);
+
+  // headline metrics
+  const standing=seasonStandings().find(s=>s.id===p.id);
+  const wins=standing?standing.wins:0;
+  // best (lowest) gross round
+  let bestGross=null;
+  allRounds().filter(r=>r.players.includes(p.id)).forEach(r=>{const g=gross(r,p.id);if(g>0&&(bestGross===null||g<bestGross))bestGross=g;});
+
   const head=el("div","card");
-  head.style.background=`linear-gradient(150deg, ${p.color}22, var(--green-700))`;
-  head.innerHTML=`<div class="row">
-    ${avatarHTML(p,60)}
-    <div style="flex:1">
-      <div class="serif" style="font-size:26px;color:var(--cream);font-weight:900">${p.name}</div>
-      <div class="muted mini">Handicap ${p.hcp} · ${st.rounds} round${st.rounds!==1?'s':''} · ${st.holes} holes played</div>
-    </div></div>`;
+  head.style.cssText="position:relative;padding:0;overflow:hidden";
+  const photoBlock = p.photo
+    ? `<img src="${p.photo}" alt="${p.name}" style="width:100%;height:240px;object-fit:cover;display:block" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"/>
+       <div style="display:none;width:100%;height:240px;background:${p.color};align-items:center;justify-content:center;font-size:80px;font-weight:900;color:#fff;font-family:'Oswald'">${initials(p.name)}</div>`
+    : `<div style="width:100%;height:240px;background:linear-gradient(150deg, ${p.color}, var(--green-700));display:flex;align-items:center;justify-content:center;font-size:90px;font-weight:900;color:#fff;font-family:'Oswald'">${initials(p.name)}</div>`;
+  head.innerHTML=`
+    <div style="position:relative">
+      ${photoBlock}
+      <div style="position:absolute;inset:0;background:linear-gradient(180deg, rgba(10,20,16,0) 45%, rgba(10,20,16,.92) 100%)"></div>
+      <div style="position:absolute;left:16px;right:16px;bottom:14px">
+        <div class="display" style="font-size:32px;color:var(--cream);text-shadow:0 2px 12px rgba(0,0,0,.8);line-height:1">${p.name}</div>
+        <div class="cond" style="color:var(--gold);font-size:13px;font-weight:600;margin-top:3px;text-shadow:0 1px 6px rgba(0,0,0,.9)">HANDICAP ${p.hcp}</div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:rgba(255,255,255,.08)">
+      ${[["Rounds",st.rounds],["Wins",wins],["Birdies",st.birdies],["Best",bestGross||'–']].map(([l,v])=>`
+        <div style="background:var(--green-800);padding:12px 6px;text-align:center">
+          <div class="serif" style="font-size:24px;font-weight:900;color:var(--cream)">${v}</div>
+          <div class="mini muted" style="font-size:9px;letter-spacing:.1em;text-transform:uppercase">${l}</div>
+        </div>`).join('')}
+    </div>`;
   w.appendChild(head);
 
   if(st.holes===0){
