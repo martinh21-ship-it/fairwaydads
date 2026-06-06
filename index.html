@@ -998,10 +998,26 @@ function renderError(app,err){
   const c=el("div","card center");
   c.innerHTML=`<div class="empty"><div class="ico">⛳</div>
     <div style="font-weight:700;color:var(--cream);margin-bottom:6px">That screen hit a snag</div>
-    <div class="mini">Your scores are safe. Tap below to go back home.</div></div>`;
+    <div class="mini">Your finished rounds and stats are safe.</div></div>`;
   const b=el("button","btn btn-primary","Back to home");
   b.onclick=()=>{S.tab="home";render();};
   c.appendChild(b);
+  // escape hatch: if a live round is wedged, let the user force-end it to break any loop
+  if(S.active){
+    const kill=el("button","");
+    kill.style.cssText="width:100%;margin-top:10px;background:none;border:1px solid rgba(194,100,60,.6);color:var(--clay);border-radius:14px;padding:13px;font-family:'Outfit';font-weight:600;font-size:14px;cursor:pointer";
+    kill.textContent="✕ Force-end the current round";
+    kill.onclick=async()=>{
+      const r=S.active;
+      S.active=null;            // clear locally first so the loop breaks immediately
+      S.tab="home";
+      try{ if(r&&r.cloudId) await cloudDeleteRound(r.cloudId); }catch(e){}
+      try{ persist(); }catch(e){}
+      render();
+    };
+    c.appendChild(kill);
+    c.appendChild(el("div","mini muted",`Use this if the app keeps trying to resume a broken round. It clears it for everyone.`));
+  }
   v.appendChild(c);
   app.appendChild(v);
   app.appendChild(Nav());
@@ -1154,13 +1170,25 @@ function Home(){
   w.appendChild(hero);
 
   if(S.active){
-    const r=S.active;const c=COURSES[r.course];
+    const r=S.active;const c=COURSES[r.course]||{short:"Course"};
     const live=el("div","card");live.style.borderColor="var(--clay)";
     live.innerHTML=`<div class="row between"><span class="tag live">● LIVE ROUND</span><span class="muted mini">${c.short} · ${r.holes} holes</span></div>
       <div class="bigtitle serif" style="font-size:22px;margin:10px 0 4px">${fmtFormat(r.format)}</div>`;
     const btn=el("button","btn btn-primary","Resume round");
     btn.onclick=()=>{S.tab="play";render();};
     live.appendChild(btn);
+    // quiet force-end, in case a round is wedged
+    const end=el("button","");end.style.cssText="margin-top:10px;width:100%;background:none;border:none;text-align:center;color:var(--cream-dim);cursor:pointer;font-family:'Outfit';font-size:12px";
+    end.textContent="Round playing up? Tap to force-end it";
+    end.onclick=async()=>{
+      if(confirm("Force-end this round? It'll be cleared for everyone. Use this only if it's stuck.")){
+        const rr=S.active; S.active=null;
+        try{ if(rr&&rr.cloudId) await cloudDeleteRound(rr.cloudId); }catch(e){}
+        try{ persist(); }catch(e){}
+        render();
+      }
+    };
+    live.appendChild(end);
     w.appendChild(live);
   } else {
     const cta=el("button","btn btn-primary","⛳  Start a new round");
