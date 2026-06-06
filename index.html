@@ -322,7 +322,7 @@ async function loadWeather(force){
     try{
       const {latitude:lat,longitude:lon}=pos.coords;
       const url=`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}`+
-        `&current=temperature_2m,weather_code,wind_speed_10m,precipitation`+
+        `&current=temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,precipitation`+
         `&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,wind_speed_10m_max`+
         `&timezone=auto&wind_speed_unit=mph&forecast_days=2`;
       const r=await fetch(url);
@@ -367,6 +367,49 @@ function golfAdvice(kind, tmax, rainProb, windMax){
   if(tmax!=null && tmax<7)return pick(cold);
   if(kind==="sun")return pick(sunny);
   return pick(cloudy);
+}
+
+// =================== ELEVATION ===================
+let ELEV_CACHE={};
+function elevKey(lat,lon){return lat.toFixed(4)+","+lon.toFixed(4);}
+async function getElevation(lat,lon){
+  const k=elevKey(lat,lon);
+  if(ELEV_CACHE[k]!=null)return ELEV_CACHE[k];
+  try{
+    const r=await fetch(`https://api.open-meteo.com/v1/elevation?latitude=${lat}&longitude=${lon}`);
+    if(!r.ok)throw new Error("elev "+r.status);
+    const j=await r.json();
+    const e=Array.isArray(j.elevation)?j.elevation[0]:j.elevation;
+    ELEV_CACHE[k]=e; return e;
+  }catch(e){ console.warn("elevation failed",e); return null; }
+}
+
+// =================== WIND + ELEVATION SHOT MATHS ===================
+function bearing(a,b){
+  const toR=x=>x*Math.PI/180, toD=x=>x*180/Math.PI;
+  const dLon=toR(b[1]-a[1]);
+  const y=Math.sin(dLon)*Math.cos(toR(b[0]));
+  const x=Math.cos(toR(a[0]))*Math.sin(toR(b[0]))-Math.sin(toR(a[0]))*Math.cos(toR(b[0]))*Math.cos(dLon);
+  return (toD(Math.atan2(y,x))+360)%360;
+}
+// shot bearing, wind speed (mph), wind FROM direction (met). Returns along-shot + cross components.
+// help: + = downwind (helping), - = into wind (hurting). cross: magnitude mph.
+function windComponents(shotBearing, windSpeed, windFromDeg){
+  const windToward=(windFromDeg+180)%360;
+  let diff=((windToward - shotBearing)+540)%360-180; // -180..180
+  const rad=diff*Math.PI/180;
+  return {help:windSpeed*Math.cos(rad), cross:Math.abs(windSpeed*Math.sin(rad))};
+}
+// combined plays-like: yards, along-wind mph (+=help/-=hurt), elev delta m (+=uphill)
+function playsLike(yards, windAlongMph, elevDeltaM){
+  let windYds = windAlongMph<0 ? yards*0.01*Math.abs(windAlongMph) : -1*yards*0.005*windAlongMph;
+  const elevYds = (elevDeltaM||0)*2.7;
+  return {plays:Math.round(yards+windYds+elevYds), windYds:Math.round(windYds), elevYds:Math.round(elevYds)};
+}
+function clubNudge(deltaYds){
+  const clubs=Math.round(Math.abs(deltaYds)/10);
+  if(clubs===0)return "play it as it is";
+  return (deltaYds>0?"club up ":"club down ")+(clubs===1?"one":clubs===2?"two":clubs+"");
 }
 
 const CLOUD = {
@@ -2442,6 +2485,14 @@ function GPSView(){
   yc.appendChild(grid);
   w.appendChild(yc);
 
+  // "Plays like" — wind + elevation adjusted
+  const pl=el("div","card");pl.id="playslike";
+  pl.innerHTML=`<div class="eyebrow">Plays like</div>
+    <div class="mini muted" id="plbody" style="margin-top:6px">Tap "Use my location" and set this green to get wind & elevation advice.</div>`;
+  w.appendChild(pl);
+  // compute in background when we have position + a set pin
+  updatePlaysLike(hole);
+
   // shot tracking readout
   const shot=el("div","card tight hidden");shot.id="shotcard";
   shot.innerHTML=`<div class="row between"><div><div class="eyebrow">Tapped point</div><div class="serif" style="font-size:18px" id="shotdist">—</div></div>
@@ -2562,6 +2613,53 @@ function updateYards(){
   set("ymid2",yMid);
   set("yfront",Math.max(0,yMid-18));
   set("yback",yMid+18);
+  updatePlaysLike(hole);
+}
+
+// Wind + elevation "plays like" advice
+async function updatePlaysLike(hole){
+  const body=document.getElementById("plbody");
+  if(!body)return;
+  if(!userPos){ return; }
+  if(hole.approx){
+    body.innerHTML=`Set this green (button below) to unlock wind & elevation advice for the shot.`;
+    return;
+  }
+  const yards=metresToYards(dist(userPos,hole.green));
+  // wind from current weather (load if needed)
+  if(!WEATHER){ loadWeather(false); }
+  const wspeed = WEATHER?.current?.wind_speed_10m;
+  const wfrom  = WEATHER?.current?.wind_direction_10m;
+  const shotBrg = bearing(userPos, hole.green);
+
+  // elevation (cached). Fetch both points.
+  body.innerHTML=`Crunching wind & elevation…`;
+  const [eMe,eGreen]=await Promise.all([getElevation(userPos[0],userPos[1]), getElevation(hole.green[0],hole.green[1])]);
+  const elevDelta = (eMe!=null&&eGreen!=null) ? (eGreen-eMe) : null;
+
+  let along=0, cross=0, haveWind=false;
+  if(wspeed!=null && wfrom!=null){ const wc=windComponents(shotBrg,wspeed,wfrom); along=wc.help; cross=wc.cross; haveWind=true; }
+
+  const {plays,windYds,elevYds}=playsLike(yards, along, elevDelta||0);
+  const delta=plays-yards;
+
+  // build readout
+  const windWord = !haveWind ? "" : (along<-1?`🟥 into wind`:along>1?`🟩 downwind`:`➡️ crosswind`);
+  const crossWord = haveWind&&cross>=8 ? ` (strong ${Math.round(cross)}mph cross)` : haveWind&&cross>=4?` (${Math.round(cross)}mph cross)`:"";
+  const elevWord = elevDelta==null?"":(elevDelta>1.5?`⛰ uphill ${Math.round(elevDelta)}m`:elevDelta<-1.5?`⤵ downhill ${Math.round(Math.abs(elevDelta))}m`:`flat`);
+
+  const bits=[];
+  if(haveWind)bits.push(`${windWord}${crossWord}${Math.abs(windYds)>=2?` ${windYds>0?'+':''}${windYds}y`:''}`);
+  if(elevWord)bits.push(`${elevWord}${Math.abs(elevYds)>=2?` ${elevYds>0?'+':''}${elevYds}y`:''}`);
+
+  body.innerHTML=`<div class="row between" style="align-items:flex-end">
+      <div><div class="serif" style="font-size:30px;font-weight:900;color:var(--gold);line-height:1">${plays} <span style="font-size:15px;color:var(--cream-dim)">yds</span></div>
+      <div class="mini muted">actual ${yards} yds</div></div>
+      <div style="text-align:right"><div style="font-weight:700;color:var(--cream)">${clubNudge(delta)}</div>
+      <div class="mini muted">${delta>0?'+':''}${delta} yd${Math.abs(delta)!==1?'s':''}</div></div>
+    </div>
+    ${bits.length?`<div class="mini muted" style="margin-top:8px">${bits.join(' · ')}</div>`:''}
+    <div class="mini muted" style="margin-top:6px;opacity:.7">Rough guide only — wind on the ball is unpredictable.</div>`;
 }
 function drawLine(){
   if(!MAP||!userPos)return;
