@@ -264,13 +264,33 @@ const COURSES = {
 
 const AVATAR_COLORS=["#c8f04a","#e8b84b","#7fc3d6","#c2643c","#34a35a","#d98cb3","#9b8cff","#f0a35e","#6fd3c0","#e07a7a","#86b1f0","#cdd3d6"];
 const LOGO_URL="https://ovurkxdikebjbgisvnpf.supabase.co/storage/v1/object/public/photos/TeeEscapelogo.png";
-// Per-hole photo URL. Allander photos live in the "Allander" subfolder (capital A),
-// named by hole name with original capitalisation, e.g. "Earl's Seat.png".
-// encodeURIComponent handles the spaces and apostrophes.
+// Per-hole photo URLs for Allander — hard-mapped to the exact files in Supabase
+// (filenames don't all match the hole names, so we map explicitly by hole number).
+const ALLANDER_BASE="https://ovurkxdikebjbgisvnpf.supabase.co/storage/v1/object/public/photos/Allander/";
+const ALLANDER_PHOTOS={
+  1:"mount%20zion.png",
+  2:"Auchengillan.png",
+  3:"Craigallion.png",
+  4:"Fickle.png",
+  5:"Burncrooks.png",
+  6:"Hog%20Hill.png",
+  7:"Tak-me-doon.png",
+  8:"Drystane%20Dyke.png",
+  9:"Halfway.png",
+  10:"Stockiemuir.png",
+  11:"Carbeth.png",
+  12:"Earl's%20Seat.png",
+  13:"Geordie's%20Breas.png",
+  14:"Garvel%20Bridge.png",
+  15:"March%20Burn.png",
+  16:"Jennie's%20Lum.png",
+  17:"Forrest%20Glade.png",
+  18:"Catythirsty.png"
+};
 function holePhotoUrl(courseKey, hole){
-  if(courseKey!=="allander" || !hole || !hole.name) return null;
-  const file=encodeURIComponent(hole.name)+".png";
-  return "https://ovurkxdikebjbgisvnpf.supabase.co/storage/v1/object/public/photos/Allander/"+file;
+  if(courseKey!=="allander" || !hole) return null;
+  const file=ALLANDER_PHOTOS[hole.n];
+  return file ? ALLANDER_BASE+file : null;
 }
 const BANTER=[
  "Wallet out, loser buys the bacon rolls.",
@@ -542,9 +562,11 @@ async function cloudCreateRound(r){
   return rows[0];
 }
 async function cloudUpdateRound(r){
+  // store the match report inside the summary JSON so it persists (no extra DB column needed)
+  const summaryWithReport = r.summary ? Object.assign({}, r.summary, {_report:r.report||null}) : null;
   await cloudFetch("/rounds?id=eq."+r.cloudId,{method:"PATCH",
     body:JSON.stringify({scores:r.scores,tracking:{scorer:r.scorer||null},status:r.done?"done":"live",
-      summary:r.summary||null})});
+      summary:summaryWithReport})});
 }
 async function cloudGetRounds(groupId){
   return await cloudFetch("/rounds?group_id=eq."+groupId+"&select=*&order=created_at.desc");
@@ -662,7 +684,7 @@ function roundFromCloud(row){
     players:row.player_ids||[], teamA:row.team_a||[], teamB:row.team_b||[],
     scorer:(row.tracking&&row.tracking.scorer)||null,
     scores:row.scores||{}, current:0,
-    done:row.status==="done", summary:row.summary||null, banter:[],
+    done:row.status==="done", summary:row.summary||null, report:(row.summary&&row.summary._report)||null, banter:[],
     _updated:row.updated_at
   };
 }
@@ -1212,7 +1234,10 @@ function Home(){
   // latest result + comments (replaces the old Banter tab)
   const lastDone=S.rounds.find(r=>r.done!==false);
   if(lastDone){
-    const c=COURSES[lastDone.course];
+    // self-heal: older rounds (finished on a previous build) may lack a summary/report
+    if(!lastDone.summary){ try{ lastDone.summary=computeSummary(lastDone); }catch(e){} }
+    if(!lastDone.report){ try{ lastDone.report=generateReport(lastDone); }catch(e){} }
+    const c=COURSES[lastDone.course]||{short:"Course"};
     const card=el("div","card");
     card.style.cssText="cursor:pointer;border:1px solid rgba(217,169,78,.3)";
     const d=new Date(lastDone.date);
