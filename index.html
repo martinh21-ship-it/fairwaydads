@@ -264,6 +264,13 @@ const COURSES = {
 
 const AVATAR_COLORS=["#c8f04a","#e8b84b","#7fc3d6","#c2643c","#34a35a","#d98cb3","#9b8cff","#f0a35e","#6fd3c0","#e07a7a","#86b1f0","#cdd3d6"];
 const LOGO_URL="https://ovurkxdikebjbgisvnpf.supabase.co/storage/v1/object/public/photos/TeeEscapelogo.png";
+// Per-hole photo URL. For now only Allander has photos, stored in the "allander" subfolder,
+// named by hole name (lowercased), e.g. "earl's seat.png". encodeURIComponent handles spaces/apostrophes.
+function holePhotoUrl(courseKey, hole){
+  if(courseKey!=="allander" || !hole || !hole.name) return null;
+  const file=encodeURIComponent(hole.name.toLowerCase())+".png";
+  return "https://ovurkxdikebjbgisvnpf.supabase.co/storage/v1/object/public/photos/allander/"+file;
+}
 const BANTER=[
  "Wallet out, loser buys the bacon rolls.",
  "That's going in the group chat.",
@@ -1620,7 +1627,15 @@ function Play(){
 
   // hole header card
   const hc=el("div","card");
-  hc.innerHTML=`<div class="holehead">
+  const photoUrl=holePhotoUrl(r.course,hole);
+  const photoHtml = photoUrl
+    ? `<div style="position:relative;height:140px;border-radius:12px;overflow:hidden;margin:-4px -4px 12px">
+         <img src="${photoUrl}" alt="${hole.name}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover" onerror="this.parentElement.style.display='none'"/>
+         <div style="position:absolute;inset:0;background:linear-gradient(180deg, rgba(10,20,16,.1) 40%, rgba(10,20,16,.75) 100%)"></div>
+         <div style="position:absolute;left:12px;bottom:9px"><div class="display" style="font-size:20px;color:var(--cream);text-shadow:0 2px 8px rgba(0,0,0,.6)">${hole.name}</div></div>
+       </div>`
+    : "";
+  hc.innerHTML=`${photoHtml}<div class="holehead">
     <div class="holenum">${hole.n}</div>
     <div class="holemeta"><div class="nm">${hole.name}</div><div class="pr">Par ${hole.par} · ${hole.yards} yds · SI ${hole.si}</div></div>
   </div>`;
