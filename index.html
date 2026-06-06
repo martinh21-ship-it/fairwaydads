@@ -209,6 +209,7 @@ const COURSES = {
     short:"Hilton",
     par:69,
     centre:[55.9685,-4.3460],
+    photo:"https://ovurkxdikebjbgisvnpf.supabase.co/storage/v1/object/public/photos/Hilton-pic.jpg",
     holes:[
       {n:1, name:"Craigenguan", yards:482, par:4, si:13},
       {n:2, name:"Burnside",    yards:384, par:4, si:7},
@@ -235,6 +236,7 @@ const COURSES = {
     short:"Allander",
     par:69,
     centre:[55.9700,-4.3490],
+    photo:"https://ovurkxdikebjbgisvnpf.supabase.co/storage/v1/object/public/photos/Allander-pic.png",
     holes:[
       {n:1, name:"Mount Zion",    yards:361, par:4, si:9},
       {n:2, name:"Auchegillan",   yards:287, par:4, si:11},
@@ -1286,16 +1288,24 @@ function SetupRound(){
   const w=el("div");
   w.appendChild(el("div","",`<div class="eyebrow">New round</div><div class="bigtitle">Set <em>it up</em></div>`));
 
-  // Course
+  // Course — tappable photo banners
   const cc=el("div","card");
   cc.innerHTML=`<label>Course</label>`;
-  const crow=el("div","chips");
   Object.entries(COURSES).forEach(([k,c])=>{
-    const ch=el("div","chip"+(st.course===k?" on":""),c.short);
-    ch.onclick=()=>{st.course=k;render();};
-    crow.appendChild(ch);
+    const sel=st.course===k;
+    const banner=el("div","");
+    banner.style.cssText=`position:relative;height:96px;border-radius:14px;overflow:hidden;margin-bottom:10px;cursor:pointer;border:2px solid ${sel?'var(--gold)':'transparent'};box-shadow:${sel?'0 0 0 3px rgba(217,169,78,.25)':'none'};transition:.15s`;
+    banner.innerHTML=`
+      <img src="${c.photo}" alt="${c.name}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover" onerror="this.style.display='none'"/>
+      <div style="position:absolute;inset:0;background:linear-gradient(90deg, rgba(10,20,16,.85) 0%, rgba(10,20,16,.35) 60%, rgba(10,20,16,.15) 100%)"></div>
+      <div style="position:absolute;left:14px;top:0;bottom:0;display:flex;flex-direction:column;justify-content:center">
+        <div class="display" style="font-size:22px;color:var(--cream);line-height:1">${c.short}</div>
+        <div class="mini" style="color:var(--cream-dim);margin-top:3px">Par ${c.par} · ${c.holes.length} holes</div>
+      </div>
+      ${sel?`<div style="position:absolute;right:12px;top:12px;background:var(--gold);color:var(--green-900);font-weight:800;font-size:12px;padding:4px 10px;border-radius:20px">✓ SELECTED</div>`:''}`;
+    banner.onclick=()=>{st.course=k;render();};
+    cc.appendChild(banner);
   });
-  cc.appendChild(crow);
   // holes
   cc.appendChild(el("label","",`Holes`));
   const hrow=el("div","chips");
