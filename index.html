@@ -1975,6 +1975,8 @@ function liveStatus(r){
       box.appendChild(el("div","row between",`<span style="font-weight:600">${i===0?'🥇 ':''}${x.p.name} <span class="muted mini">(${x.thru} holes)</span></span><span class="serif" style="color:var(--lime);font-weight:900">${x.pts} pts</span>`));
     });
   } else {
+    box.innerHTML=`<div class="eyebrow">Net leaderboard</div>`;
+    const sorted=r.players.map(id=>{const p=S.players.find(x=>x.id===id);const {total,thru}=grossThru(r,id);return {p,net:netTotal(r,id),thru};}).sort((a,b)=>a.net-b.net);
     sorted.forEach((x,i)=>{
       box.appendChild(el("div","row between",`<span style="font-weight:600">${i===0?'🥇 ':''}${x.p.name} <span class="muted mini">(${x.thru} holes)</span></span><span class="serif" style="color:var(--lime);font-weight:900">${x.net||'–'}</span>`));
     });
