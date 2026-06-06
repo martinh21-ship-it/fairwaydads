@@ -691,7 +691,7 @@ async function cloudPull(){
       } else if(match.done){
         // scorer finished it — move it to history view for the watcher
         S.active=null;
-        if(S.tab==="play"){S.tab="banter"; S.openResult=match.cloudId; toast("Round finished — result's in");}
+        if(S.tab==="play"){S.tab="result"; S.openResult=match.cloudId; toast("Round finished — result's in");}
       }
     }
     S.rounds=finished;
@@ -719,8 +719,8 @@ function startSync(){
   SYNC_TIMER=setInterval(async()=>{
     await cloudPull();
     if(S.tab==="gps") await loadPins();
-    if(S.tab==="banter"&&S.openResult) await loadBanter(S.openResult);
-    if(S.tab==="play"||S.tab==="board"||S.tab==="home"||S.tab==="banter")render();
+    if(S.tab==="result"&&S.openResult) await loadBanter(S.openResult);
+    if(S.tab==="play"||S.tab==="board"||S.tab==="home"||S.tab==="result")render();
   },4000);
 }
 function stopSync(){ if(SYNC_TIMER)clearInterval(SYNC_TIMER); SYNC_TIMER=null; }
@@ -848,6 +848,37 @@ function netTotal(round, pid){
   return net;
 }
 
+// STABLEFORD: points per hole from net score vs par.
+// net eagle+ =4 (or more), net birdie=3, net par=2, net bogey=1, worse=0.
+function stablefordPoints(round, pid){
+  const p=S.players.find(x=>x.id===pid);
+  const ph=playingHcp(p,round);
+  const h=holesInPlay(round);
+  let pts=0;
+  h.forEach(hole=>{
+    const v=round.scores[pid]?.[hole.n];
+    if(!v)return;
+    const net=v - strokesOnHole(ph,hole.si);
+    const d=net-hole.par;
+    let p2 = 2 - d; // par=2, each over -1, each under +1
+    if(d<=-3) p2 = 5; // albatross+ caps sensibly
+    pts += Math.max(0,p2);
+  });
+  return pts;
+}
+// version that works on a stored round (uses player from S.players)
+function stablefordFor(r,pid){
+  const p=S.players.find(x=>x.id===pid); if(!p)return 0;
+  const frac=r.holes===9?0.5:1; const ph=Math.round(p.hcp*frac);
+  const holes=holesInPlayFor(r); let pts=0;
+  holes.forEach(h=>{
+    const v=r.scores?.[pid]?.[h.n]; if(!v)return;
+    const net=v-strokesOnHole(ph,h.si); const d=net-h.par;
+    let p2=2-d; if(d<=-3)p2=5; pts+=Math.max(0,p2);
+  });
+  return pts;
+}
+
 // MATCH PLAY (singles): holes up/down between two players using net (handicap diff applied to higher hcp)
 function matchPlayResult(round, aId, bId){
   const A=S.players.find(p=>p.id===aId), B=S.players.find(p=>p.id===bId);
@@ -950,7 +981,7 @@ function render(){
     else if(S.tab==="gps") v.appendChild(GPSView());
     else if(S.tab==="board") v.appendChild(Board());
     else if(S.tab==="dads") v.appendChild(Dads());
-    else if(S.tab==="banter") v.appendChild(S.openResult?ResultThread(S.openResult):BanterFeed());
+    else if(S.tab==="result") v.appendChild(ResultThread(S.openResult));
     else if(S.tab==="profile") v.appendChild(Profile());
     app.appendChild(v);
     app.appendChild(Nav());
@@ -993,7 +1024,6 @@ function Nav(){
     ["play","Play",'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'],
     ["gps","GPS",'<path d="M12 2C8 2 5 5 5 9c0 5 7 13 7 13s7-8 7-13c0-4-3-7-7-7z"/><circle cx="12" cy="9" r="2.4"/>'],
     ["board","Stats",'<path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/>'],
-    ["banter","Banter",'<path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/>'],
     ["dads","Dads",'<circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.5 3-6 6-6s6 2.5 6 6"/><circle cx="17" cy="9" r="2.6"/><path d="M16 20c0-2.5 1.5-4.5 4-4.8"/>']
   ];
   items.forEach(([k,lbl,svg])=>{
@@ -1143,6 +1173,34 @@ function Home(){
   w.appendChild(WeatherCard());
   w.appendChild(EscapeWindows());
 
+  // latest result + comments (replaces the old Banter tab)
+  const lastDone=S.rounds.find(r=>r.done!==false);
+  if(lastDone){
+    const c=COURSES[lastDone.course];
+    const card=el("div","card");
+    card.style.cssText="cursor:pointer;border:1px solid rgba(217,169,78,.3)";
+    const d=new Date(lastDone.date);
+    const cmtCount=((S.banterCache&&S.banterCache[lastDone.cloudId||lastDone.id])||[]).filter(b=>b.author_id).length;
+    card.innerHTML=`<div class="row between"><span class="eyebrow" style="color:var(--gold)">📰 Latest result</span>
+      <span class="mini muted">${d.toLocaleDateString('en-GB',{day:'numeric',month:'short'})}</span></div>
+      <div class="serif" style="font-size:20px;color:var(--cream);margin:6px 0 2px">${lastDone.summary?.text||'Round complete'} 🏆</div>
+      <div class="mini muted">${c.short} · ${fmtFormat(lastDone.format)} · ${lastDone.holes}H</div>`;
+    if(lastDone.report){
+      card.appendChild(el("div","banter",`"${lastDone.report.slice(0,120)}${lastDone.report.length>120?'…':''}"`));
+    }
+    const open=el("div","mini");open.style.cssText="margin-top:10px;color:var(--gold);font-weight:700";
+    open.textContent=`💬 Open report & comments${cmtCount?` (${cmtCount})`:''} →`;
+    card.appendChild(open);
+    card.onclick=()=>{S.openResult=lastDone.cloudId||lastDone.id;S.tab="result";render();};
+    w.appendChild(card);
+    // load comment count once in background; only re-render if it actually changed
+    const rid=lastDone.cloudId||lastDone.id;
+    const cached=(S.banterCache&&S.banterCache[rid])||null;
+    if(!cached){
+      loadBanter(rid).then(rows=>{ if(S.tab==="home" && rows && rows.length) render(); });
+    }
+  }
+
   // quick standings
   if(S.rounds.length){
     const sb=el("div","card");
@@ -1265,7 +1323,7 @@ function EscapeWindows(){
   card.appendChild(el("div","banter",`“${pick(WINDOW_QUIPS)}”`));
   return card;
 }
-function fmtFormat(f){return {stroke:"Stroke Play",match:"Match Play",team:"Team Match Play",skins:"Skins"}[f]||f;}
+function fmtFormat(f){return {stroke:"Stroke Play",stableford:"Stableford",match:"Match Play",team:"Team Match Play",skins:"Skins"}[f]||f;}
 
 
 // ---------- DADS (roster) ----------
@@ -1417,7 +1475,7 @@ function SetupRound(){
   const fc=el("div","card");
   fc.innerHTML=`<label>Format</label>`;
   const frow=el("div","chips");
-  [["stroke","Stroke"],["match","Match Play"],["skins","Skins"],["team","Team Match"]].forEach(([k,l])=>{
+  [["stroke","Stroke"],["stableford","Stableford"],["match","Match Play"],["skins","Skins"],["team","Team Match"]].forEach(([k,l])=>{
     const ch=el("div","chip"+(st.format===k?" on":""),l);
     ch.onclick=()=>{st.format=k;if(k!=="match")st.players=st.players;render();};
     frow.appendChild(ch);
@@ -1475,6 +1533,7 @@ function SetupRound(){
 function formatHint(f){
   return {
     stroke:"Lowest net total wins. Handicaps applied per stroke index.",
+    stableford:"Points per hole off net score — net par = 2pts, birdie = 3, bogey = 1. Highest total wins. Kind to blow-ups.",
     match:"Head-to-head, hole by hole. Strokes given on the toughest holes. Pick exactly 2 players (or more for a mini-league).",
     skins:"Win a hole outright (net) to take the skin. Ties carry over — pressure builds.",
     team:"Two teams, best net ball on each hole wins it."
@@ -1703,7 +1762,7 @@ function BanterFeed(){
 function ResultThread(roundId){
   const w=el("div");
   const r=S.rounds.find(x=>x.cloudId===roundId)||(S.banterRoundMeta&&S.banterRoundMeta[roundId]);
-  const back=el("button","del","◂ All results");back.onclick=()=>{S.openResult=null;render();};
+  const back=el("button","del","◂ Back to home");back.onclick=()=>{S.openResult=null;S.tab="home";render();};
   w.appendChild(back);
 
   if(!r){w.appendChild(el("div","card center","Loading…"));loadBanter(roundId).then(()=>render());return w;}
@@ -1729,7 +1788,7 @@ function ResultThread(roundId){
 
   // load thread
   const posts=(S.banterCache&&S.banterCache[roundId])||[];
-  loadBanter(roundId).then(rows=>{ if(rows.length!==posts.length && S.tab==="banter" && S.openResult===roundId)render(); });
+  loadBanter(roundId).then(rows=>{ if(rows.length!==posts.length && S.tab==="result" && S.openResult===roundId)render(); });
 
   // highlights (auto-posts) shown as pinned talking points
   const autos=posts.filter(p=>!p.author_id);
@@ -1909,9 +1968,13 @@ function liveStatus(r){
     if(res.state===0)txt='<span style="color:var(--lime)">All square</span>';
     else{const lead=res.state>0?'Team A':'Team B';txt=`<span style="color:var(--lime)">${lead} ${Math.abs(res.state)} up</span>`;}
     box.innerHTML=`<div class="eyebrow">${nm('teamA')} vs ${nm('teamB')}</div><div style="font-weight:700;font-size:16px">${txt}</div>`;
+  } else if(r.format==="stableford"){
+    box.innerHTML=`<div class="eyebrow">Stableford points</div>`;
+    const sorted=r.players.map(id=>{const p=S.players.find(x=>x.id===id);const {thru}=grossThru(r,id);return {p,pts:stablefordPoints(r,id),thru};}).sort((a,b)=>b.pts-a.pts);
+    sorted.forEach((x,i)=>{
+      box.appendChild(el("div","row between",`<span style="font-weight:600">${i===0?'🥇 ':''}${x.p.name} <span class="muted mini">(${x.thru} holes)</span></span><span class="serif" style="color:var(--lime);font-weight:900">${x.pts} pts</span>`));
+    });
   } else {
-    box.innerHTML=`<div class="eyebrow">Net leader</div>`;
-    const sorted=r.players.map(id=>{const p=S.players.find(x=>x.id===id);const {total,thru}=grossThru(r,id);return {p,net:netTotal(r,id),gross:total,thru};}).sort((a,b)=>a.net-b.net);
     sorted.forEach((x,i)=>{
       box.appendChild(el("div","row between",`<span style="font-weight:600">${i===0?'🥇 ':''}${x.p.name} <span class="muted mini">(${x.thru} holes)</span></span><span class="serif" style="color:var(--lime);font-weight:900">${x.net||'–'}</span>`));
     });
@@ -1937,6 +2000,91 @@ function roundHighlights(r){
   return out;
 }
 function pick(a){return a[Math.floor(Math.random()*a.length)];}
+
+// =================== MATCH REPORT (no-key generator) ===================
+// Reads the real scores and assembles a cheeky, fact-specific write-up.
+function generateReport(r){
+  const holes=holesInPlayFor(r);
+  const c=COURSES[r.course];
+  const first=id=>{const p=S.players.find(x=>x.id===id);return p?p.name.split(' ')[0]:"Someone";};
+  // per-player analysis
+  const analysis=r.players.map(pid=>{
+    const p=S.players.find(x=>x.id===pid); if(!p)return null;
+    let birdies=0,eagles=0,pars=0,bogeys=0,blowups=0,best=null,worst=null,toPar=0;
+    holes.forEach(h=>{
+      const g=r.scores?.[pid]?.[h.n]; if(!g)return;
+      const d=g-h.par; toPar+=d;
+      if(d<=-2)eagles++; else if(d===-1)birdies++; else if(d===0)pars++; else if(d===1)bogeys++; else if(d>=2)blowups++;
+      if(best===null||d<best.d)best={d,h}; if(worst===null||d>worst.d)worst={d,h};
+    });
+    return {pid,name:first(pid),birdies,eagles,pars,bogeys,blowups,best,worst,toPar,
+            net:netTotalFor(r,pid),pts:stablefordFor(r,pid),gross:Object.values(r.scores?.[pid]||{}).reduce((a,b)=>a+b,0)};
+  }).filter(Boolean);
+
+  const lines=[];
+  const winners=r.summary?.winners||[];
+  const winNames=winners.map(first);
+
+  // 1) Opening — result
+  const openers=[
+    `The ${c.short} has spoken.`,`Another chapter in the ${c.short} chronicles.`,
+    `Cards are in, egos are bruised.`,`Well. That happened.`,`The dust settles at ${c.short}.`];
+  lines.push(pick(openers)+" "+(r.summary?.text?`${r.summary.text}.`:""));
+
+  // 2) Winner praise (or halved)
+  if(winNames.length){
+    const w=winNames.join(" & ");
+    lines.push(pick([
+      `${w} walked away with the bragging rights — expect it brought up at every opportunity for the next fortnight.`,
+      `${w} got the job done. Gracious in victory? Don't count on it.`,
+      `Take a bow, ${w}. The rest will be muttering about "next time".`,
+      `${w} on top. Somewhere a wife is being told all about it in unnecessary detail.`]));
+  } else {
+    lines.push(pick([`All square at the death — nobody buying, everybody arguing.`,`A halved affair. The moral victors are, of course, everyone.`]));
+  }
+
+  // 3) Standout performance (best round by toPar)
+  const bestPlayer=[...analysis].sort((a,b)=>a.toPar-b.toPar)[0];
+  if(bestPlayer){
+    if(bestPlayer.eagles>0) lines.push(`${bestPlayer.name} had an eagle on the card — and you'll be hearing about that one well into next season.`);
+    else if(bestPlayer.birdies>=2) lines.push(`${bestPlayer.name} found ${bestPlayer.birdies} birdies, briefly convincing himself he's been hiding real talent all along.`);
+    else if(bestPlayer.birdies===1) lines.push(`${bestPlayer.name} snuck a birdie in — proof, he'll insist, of a game "rounding into form".`);
+  }
+
+  // 4) Best single hole
+  const bestHole=[...analysis].filter(a=>a.best).sort((a,b)=>a.best.d-b.best.d)[0];
+  if(bestHole&&bestHole.best.d<=-1){
+    lines.push(`Shot of the day goes to ${bestHole.name} on ${bestHole.best.h.name} — ${fmtVsPar(bestHole.best.d)} and a strut to match.`);
+  }
+
+  // 5) The shame — biggest blow-up
+  const worstHole=[...analysis].filter(a=>a.worst).sort((a,b)=>b.worst.d-a.worst.d)[0];
+  if(worstHole&&worstHole.worst.d>=2){
+    lines.push(pick([
+      `Less said about ${worstHole.name}'s adventure on ${worstHole.worst.h.name} the better — a ${worstHole.worst.d>=3?'proper snowman':'big number'} that he'll blame on "a dodgy lie".`,
+      `${worstHole.name} came unstuck on ${worstHole.worst.h.name}, posting a score best described as "character building".`,
+      `Spare a thought for ${worstHole.name}, who turned ${worstHole.worst.h.name} into a personal crisis.`]));
+  }
+
+  // 6) Consistency / collapse note
+  const blowupKing=[...analysis].sort((a,b)=>b.blowups-a.blowups)[0];
+  if(blowupKing&&blowupKing.blowups>=3){
+    lines.push(`${blowupKing.name} racked up ${blowupKing.blowups} blow-up holes — a round with more drama than a soap omnibus.`);
+  }
+  const steady=[...analysis].sort((a,b)=>b.pars-a.pars)[0];
+  if(steady&&steady.pars>=4&&steady.blowups===0){
+    lines.push(`${steady.name} kept it tidy with ${steady.pars} pars and no disasters — boring golf, but the scorecard doesn't care.`);
+  }
+
+  // 7) Sign-off
+  lines.push(pick([
+    `Same time next week, gentlemen. Bring your wallets.`,
+    `Onwards. The bell at the 19th won't ring itself.`,
+    `That's your lot. The comeback tour starts next round.`,
+    `Filed under "what happens on tour". Mostly.`]));
+
+  return lines.join(" ");
+}
 
 // ---------- SCORECARD ----------
 function Scorecard(r){
@@ -1978,12 +2126,14 @@ function Scorecard(r){
 async function finishRound(){
   const r=S.active;
   r.summary=computeSummary(r);
+  r.report=generateReport(r);   // cheeky auto match report
   r.done=true;
   // push final state to cloud
   if(r.cloudId){
     try{ await cloudUpdateRound(r); }catch(e){ console.warn("finish push failed",e); }
-    // post a single highlights auto-comment into this round's thread (birdies/eagles)
+    // post the match report as the opening auto-comment in the thread
     try{
+      await autoPost("📰 "+r.report, r.cloudId);
       const hl=roundHighlights(r);
       if(hl.length){
         const txt=(hl.length<=6?hl.join(" · "):hl.slice(0,6).join(" · ")+` · +${hl.length-6} more`);
@@ -1993,11 +2143,11 @@ async function finishRound(){
   }
   S.rounds.unshift(r);
   S.active=null;
-  S.openResult=r.cloudId||r.id;   // open this result's thread
-  S.tab="banter";
+  S.openResult=r.cloudId||r.id;
+  S.tab="home";   // latest result + comments now live on Home
   S.justFinished=r.id;
   render();
-  toast("Result in 🏁 — get the banter going");
+  toast("Result in 🏁 the report's written…");
 }
 
 async function abortRound(){
@@ -2024,7 +2174,7 @@ function computeSummary(r){
   if(r.format==="skins"){
     const {skins}=skinsResult(r);
     const max=Math.max(...Object.values(skins));
-    const winners=Object.keys(skins).filter(k=>skins[k]===max&&max>0).map(Number);
+    const winners=Object.keys(skins).filter(k=>skins[k]===max&&max>0);
     const names=winners.map(id=>S.players.find(p=>p.id===id)?.name).join(" & ");
     return{type:"skins",text:max>0?`${names} — ${max} skins`:"No skins won",winners,skins};
   }
@@ -2034,6 +2184,11 @@ function computeSummary(r){
     const team=res.state>0?r.teamA:r.teamB;
     const nm=team.map(id=>S.players.find(p=>p.id===id)?.name.split(' ')[0]).join(" & ");
     return{type:"team",text:`${nm} took it, ${Math.abs(res.state)} up`,winners:team};
+  }
+  if(r.format==="stableford"){
+    const sorted=r.players.map(id=>({id,pts:stablefordPoints(r,id)})).sort((a,b)=>b.pts-a.pts);
+    const win=S.players.find(p=>p.id===sorted[0].id);
+    return{type:"stableford",text:`${win.name} — ${sorted[0].pts} pts`,winners:[sorted[0].id],table:sorted};
   }
   // stroke
   const sorted=r.players.map(id=>({id,net:netTotal(r,id),gross:gross(r,id)})).sort((a,b)=>a.net-b.net);
