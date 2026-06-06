@@ -264,12 +264,13 @@ const COURSES = {
 
 const AVATAR_COLORS=["#c8f04a","#e8b84b","#7fc3d6","#c2643c","#34a35a","#d98cb3","#9b8cff","#f0a35e","#6fd3c0","#e07a7a","#86b1f0","#cdd3d6"];
 const LOGO_URL="https://ovurkxdikebjbgisvnpf.supabase.co/storage/v1/object/public/photos/TeeEscapelogo.png";
-// Per-hole photo URL. For now only Allander has photos, stored in the "allander" subfolder,
-// named by hole name (lowercased), e.g. "earl's seat.png". encodeURIComponent handles spaces/apostrophes.
+// Per-hole photo URL. Allander photos live in the "Allander" subfolder (capital A),
+// named by hole name with original capitalisation, e.g. "Earl's Seat.png".
+// encodeURIComponent handles the spaces and apostrophes.
 function holePhotoUrl(courseKey, hole){
   if(courseKey!=="allander" || !hole || !hole.name) return null;
-  const file=encodeURIComponent(hole.name.toLowerCase())+".png";
-  return "https://ovurkxdikebjbgisvnpf.supabase.co/storage/v1/object/public/photos/allander/"+file;
+  const file=encodeURIComponent(hole.name)+".png";
+  return "https://ovurkxdikebjbgisvnpf.supabase.co/storage/v1/object/public/photos/Allander/"+file;
 }
 const BANTER=[
  "Wallet out, loser buys the bacon rolls.",
