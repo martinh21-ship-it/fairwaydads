@@ -1397,45 +1397,58 @@ function WeatherCard(){
   adv.innerHTML=`<div class="serif" style="font-style:italic;color:var(--gold);font-size:15px">“${advice}”</div>`;
   card.appendChild(adv);
 
-  // next 2 hours — rain chance and rain amount per hour
+  // next 6 hours — icon, temp, rain %, mm per hour; horizontally scrollable
   if(WEATHER.hourly && WEATHER.hourly.time){
     const H=WEATHER.hourly;
-    // API returns local-time strings like "2026-06-06T14:00" (timezone=auto).
-    // Find the current hour by comparing the API's "current.time" (same format) or local now,
-    // then take the next 2 entries — avoids any UTC/local parsing mismatch.
     const nowLocal = (WEATHER.current && WEATHER.current.time) ? WEATHER.current.time
-                    : new Date().toISOString().slice(0,13); // "YYYY-MM-DDTHH"
-    const nowHour = nowLocal.slice(0,13); // compare to the hour
+                    : new Date().toISOString().slice(0,13);
+    const nowHour = nowLocal.slice(0,13);
     let startIdx = H.time.findIndex(ts => ts.slice(0,13) >= nowHour);
     if(startIdx < 0) startIdx = 0;
     const upcoming=[];
-    for(let i=startIdx; i<H.time.length && upcoming.length<2; i++){
+    for(let i=startIdx; i<H.time.length && upcoming.length<6; i++){
       upcoming.push({
         ts:H.time[i],
         prob: H.precipitation_probability?.[i],
         mm: H.precipitation?.[i],
-        code: H.weather_code?.[i]
+        code: H.weather_code?.[i],
+        temp: H.temperature_2m?.[i]
       });
     }
     if(upcoming.length){
       const hr=el("div","");hr.style.cssText="margin-top:12px";
-      hr.innerHTML=`<div class="mini muted" style="font-weight:700;text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px">Next couple of hours</div>`;
-      const row=el("div","row");row.style.cssText="gap:10px";
+      hr.innerHTML=`<div class="mini muted" style="font-weight:700;text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px">Next 6 hours</div>`;
+      const row=el("div","");row.style.cssText="display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch";
       upcoming.forEach(h=>{
         const [lbl,emo]=wmo(h.code);
-        // h.ts is like "2026-06-06T14:00" — take the hour, format as 2pm etc.
         const hh=parseInt(h.ts.slice(11,13),10);
         const time=(hh%12||12)+(hh<12?'am':'pm');
         const mm=(h.mm!=null)?(Math.round(h.mm*10)/10):0;
         const wet=(h.prob||0)>=40 || mm>0.1;
-        const box=el("div","");box.style.cssText=`flex:1;background:rgba(0,0,0,.22);border-radius:12px;padding:11px;text-align:center;${wet?'border:1px solid rgba(127,195,214,.4)':''}`;
-        box.innerHTML=`<div class="mini muted" style="font-weight:700">${time}</div>
-          <div style="font-size:24px;margin:2px 0">${emo}</div>
-          <div class="serif" style="font-weight:900;color:${wet?'var(--sky)':'var(--cream)'};font-size:18px">${h.prob==null?'–':h.prob+'%'}</div>
-          <div class="mini muted" style="margin-top:2px">🌧 ${mm} mm</div>`;
+        const box=el("div","");box.style.cssText=`flex:0 0 auto;width:66px;background:rgba(0,0,0,.22);border-radius:12px;padding:10px 6px;text-align:center;${wet?'border:1px solid rgba(127,195,214,.4)':'border:1px solid transparent'}`;
+        box.innerHTML=`<div class="mini muted" style="font-weight:700;font-size:11px">${time}</div>
+          <div style="font-size:22px;margin:3px 0">${emo}</div>
+          <div class="serif" style="font-weight:900;color:var(--cream);font-size:15px">${h.temp!=null?Math.round(h.temp)+'°':'–'}</div>
+          <div class="mini" style="margin-top:3px;color:${wet?'var(--sky)':'var(--cream-dim)'};font-weight:700;font-size:11px">${h.prob==null?'–':h.prob+'%'}</div>
+          <div class="mini muted" style="font-size:10px">${mm} mm</div>`;
         row.appendChild(box);
       });
       hr.appendChild(row);
+
+      // sunrise / sunset line — show whichever is relevant (next one coming up, plus today's pair)
+      const sr=(WEATHER.daily&&WEATHER.daily.sunrise)||[];
+      const ss=(WEATHER.daily&&WEATHER.daily.sunset)||[];
+      const fmtT=(iso)=>{ if(!iso)return null; const hh=parseInt(iso.slice(11,13),10),mn=iso.slice(14,16); return (hh%12||12)+':'+mn+(hh<12?'am':'pm'); };
+      const today=new Date().toISOString().slice(0,10);
+      const srToday=sr.find(s=>s.slice(0,10)===today), ssToday=ss.find(s=>s.slice(0,10)===today);
+      if(srToday||ssToday){
+        const line=el("div","mini muted");line.style.cssText="margin-top:8px;text-align:center";
+        const parts=[];
+        if(srToday)parts.push(`🌅 Sunrise ${fmtT(srToday)}`);
+        if(ssToday)parts.push(`🌇 Sunset ${fmtT(ssToday)}`);
+        line.innerHTML=parts.join(' · ');
+        hr.appendChild(line);
+      }
       card.appendChild(hr);
     }
   }
@@ -2444,7 +2457,13 @@ function playerStats(pid){
   Object.values(byHole).forEach(o=>{if(o.n>=2){const avg=o.tot/o.n;if(!nem||avg>nem.avg)nem={avg,h:o.ref,n:o.n};}});
   s.nemesis=nem;
   // net scoring trend per round (for sparkline)
-  s.trend=allRounds().filter(r=>r.players.includes(pid)).map(r=>({date:r.date,net:netTotalFor(r,pid)})).filter(x=>x.net>0).sort((a,b)=>a.date-b.date);
+  // trend: completed rounds only, carrying holes + gross + net so the card can toggle views
+  s.trend=allRounds().filter(r=>r.players.includes(pid)).map(r=>{
+    const holes=holesInPlayFor(r);
+    const complete=holes.length>0 && holes.every(h=>r.scores?.[pid]?.[h.n]!=null);
+    if(!complete)return null;
+    return {date:r.date, holes:r.holes, gross:gross(r,pid), net:netTotalFor(r,pid)};
+  }).filter(x=>x && x.gross>0).sort((a,b)=>a.date-b.date);
   return s;
 }
 
@@ -2751,16 +2770,16 @@ function Profile(){
   // headline metrics
   const standing=seasonStandings().find(s=>s.id===p.id);
   const wins=standing?standing.wins:0;
-  // best (lowest) gross — split by 9 vs 18 holes, completed rounds only
-  let best9=null, best18=null;
+  // best (lowest) — split by 9 vs 18 holes AND gross vs net, completed rounds only
+  let best9g=null,best18g=null,best9n=null,best18n=null;
   allRounds().filter(r=>r.players.includes(p.id)).forEach(r=>{
     const holes=holesInPlayFor(r);
     const complete=holes.length>0 && holes.every(h=>r.scores?.[p.id]?.[h.n]!=null);
     if(!complete)return;
-    const g=gross(r,p.id);
+    const g=gross(r,p.id), n=netTotalFor(r,p.id);
     if(g<=0)return;
-    if(r.holes===9){ if(best9===null||g<best9)best9=g; }
-    else { if(best18===null||g<best18)best18=g; }
+    if(r.holes===9){ if(best9g===null||g<best9g)best9g=g; if(best9n===null||n<best9n)best9n=n; }
+    else { if(best18g===null||g<best18g)best18g=g; if(best18n===null||n<best18n)best18n=n; }
   });
 
   const head=el("div","card");
@@ -2791,20 +2810,26 @@ function Profile(){
     </div>`;
   w.appendChild(head);
 
-  // wire the Best tile to toggle between best 9 and best 18
+  // wire the Best tile to cycle through available views (9/18 × gross/net)
   setTimeout(()=>{
     const tile=head.querySelector('.best-tile');
     if(!tile)return;
     const valEl=tile.querySelector('.best-val'), lblEl=tile.querySelector('.best-lbl');
-    // default to best 9 (the group plays nines most); fall back to 18 if no 9s yet
-    let mode = (best9!=null) ? 9 : (best18!=null ? 18 : 9);
+    // build the list of views that actually have data, defaulting to 9-hole net first
+    const views=[];
+    if(best9n!=null)views.push({v:best9n,lbl:"Best 9 net"});
+    if(best9g!=null)views.push({v:best9g,lbl:"Best 9 gross"});
+    if(best18n!=null)views.push({v:best18n,lbl:"Best 18 net"});
+    if(best18g!=null)views.push({v:best18g,lbl:"Best 18 gross"});
+    let i=0;
     const paint=()=>{
-      const v = mode===9 ? best9 : best18;
-      valEl.textContent = v!=null ? v : '–';
-      lblEl.innerHTML = `Best ${mode} ${ (best9!=null&&best18!=null) ? '<span style="opacity:.6">⇄</span>' : ''}`;
+      if(!views.length){valEl.textContent='–';lblEl.textContent='Best';return;}
+      const cur=views[i];
+      valEl.textContent=cur.v;
+      lblEl.innerHTML=`${cur.lbl} ${views.length>1?'<span style="opacity:.6">⇄</span>':''}`;
     };
     paint();
-    tile.onclick=()=>{ mode = mode===9?18:9; paint(); };
+    tile.onclick=()=>{ if(views.length>1){i=(i+1)%views.length;paint();} };
   },0);
 
   if(st.holes===0){
@@ -2848,14 +2873,46 @@ function Profile(){
   bc.appendChild(ringRow);
   w.appendChild(bc);
 
-  // ---- net score trend sparkline ----
-  if(st.trend.length>=2){
+  // ---- score trend with 9/18 and gross/net toggles ----
+  const has9=st.trend.some(t=>t.holes===9), has18=st.trend.some(t=>t.holes===18);
+  if(st.trend.length>=1 && (has9||has18)){
     const tc=el("div","card");
-    tc.innerHTML=`<div class="eyebrow">Net score trend · last ${st.trend.length} rounds</div>`;
-    tc.appendChild(sparkline(st.trend));
-    const first=st.trend[0].net,last=st.trend[st.trend.length-1].net;
-    const better=last<first;
-    tc.appendChild(el("div","mini muted",`<span style="color:${better?'var(--lime)':'var(--clay)'}">${better?'▼ trending lower (better)':'▲ trending higher'}</span> · best net ${Math.min(...st.trend.map(t=>t.net))}`));
+    // view state: default 9 holes (group plays most), net scores
+    if(!S.trendView)S.trendView={holes:(has9?9:18),metric:"net"};
+    const tv=S.trendView;
+    if(tv.holes===9&&!has9)tv.holes=18;
+    if(tv.holes===18&&!has18)tv.holes=9;
+
+    const header=el("div","row between");
+    header.innerHTML=`<div class="eyebrow">Score trend</div>`;
+    // toggle controls
+    const ctrls=el("div","row");ctrls.style.gap="6px";
+    const mkToggle=(label,active,onclick)=>{
+      const b=el("button","",label);
+      b.style.cssText=`padding:4px 10px;border-radius:20px;font-size:11px;font-weight:700;cursor:pointer;border:1px solid ${active?'var(--gold)':'rgba(255,255,255,.15)'};background:${active?'var(--gold)':'transparent'};color:${active?'var(--green-900)':'var(--cream-dim)'}`;
+      b.onclick=onclick;return b;
+    };
+    if(has9&&has18){
+      ctrls.appendChild(mkToggle("9",tv.holes===9,()=>{tv.holes=9;render();}));
+      ctrls.appendChild(mkToggle("18",tv.holes===18,()=>{tv.holes=18;render();}));
+    }
+    ctrls.appendChild(mkToggle("Gross",tv.metric==="gross",()=>{tv.metric="gross";render();}));
+    ctrls.appendChild(mkToggle("Net",tv.metric==="net",()=>{tv.metric="net";render();}));
+    header.appendChild(ctrls);
+    tc.appendChild(header);
+
+    // filter to the chosen hole length, map to chosen metric (sparkline reads .net)
+    const data=st.trend.filter(t=>t.holes===tv.holes).map(t=>({date:t.date,net:tv.metric==="gross"?t.gross:t.net}));
+
+    if(data.length>=2){
+      tc.appendChild(el("div","mini muted",`${tv.metric==="gross"?"Gross":"Net"} scores · last ${data.length} completed ${tv.holes}-hole round${data.length!==1?'s':''}`));
+      tc.appendChild(sparkline(data));
+      const first=data[0].net,last=data[data.length-1].net;
+      const better=last<first;
+      tc.appendChild(el("div","mini muted",`<span style="color:${better?'var(--lime)':'var(--clay)'}">${better?'▼ trending lower (better)':'▲ trending higher'}</span> · best ${tv.metric} ${Math.min(...data.map(t=>t.net))}`));
+    } else {
+      tc.appendChild(el("div","mini muted",`Only ${data.length} completed ${tv.holes}-hole round so far — play a couple more to see a trend.`));
+    }
     w.appendChild(tc);
   }
 
