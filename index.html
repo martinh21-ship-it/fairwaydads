@@ -405,6 +405,38 @@ function golfAdvice(kind, tmax, rainProb, windMax){
   return pick(cloudy);
 }
 
+// Away-from-course cheeky messages (shown on GPS when nowhere near the course).
+// Each line opens by noting you're away from the course, then the dig.
+const AWAY_WEEKDAY=[
+  "You're miles from the first tee. Obviously hard at work funding that new driver. Noble stuff.",
+  "No course in sight. Someone's got to earn the golf habit — back to it, eh?",
+  "Nowhere near a fairway. Being a model employee today so the weekend pass gets approved.",
+  "Far from the tee box. Banking the brownie points now to cash in for 9 holes later. Smart."
+];
+const AWAY_WEEKEND=[
+  "You're nowhere near the course. Building serious family credit for that weekend pass, no doubt.",
+  "Not a fairway in sight. Quality dad duty now, sneaky 9 holes later — we see the plan.",
+  "Miles from the first tee. Family first today; the course waits until the goodwill's banked.",
+  "No course detected nearby. Currently negotiating your release for a quick round."
+];
+function awayMessage(){
+  const day=new Date().getDay(); // 0=Sun,6=Sat
+  const weekend=(day===0||day===6);
+  return pick(weekend?AWAY_WEEKEND:AWAY_WEEKDAY);
+}
+// metres between two [lat,lng] (Haversine) — used to tell if you're at the course
+function metresBetween(a,b){
+  const R=6371000,toR=x=>x*Math.PI/180;
+  const dLat=toR(b[0]-a[0]),dLon=toR(b[1]-a[1]);
+  const s=Math.sin(dLat/2)**2+Math.cos(toR(a[0]))*Math.cos(toR(b[0]))*Math.sin(dLon/2)**2;
+  return 2*R*Math.asin(Math.sqrt(s));
+}
+// Are we near the given course? true if within ~2km of its centre. null if position unknown.
+function nearCourse(course){
+  if(!userPos||!course||!course.centre)return null;
+  return metresBetween(userPos, course.centre) <= 2000;
+}
+
 // Find dry escape windows: runs of consecutive daylight hours with 0% rain, >= minHours long.
 function dryWindows(minHours){
   const W=WEATHER; if(!W||!W.hourly||!W.hourly.time)return [];
@@ -595,8 +627,14 @@ function applyPins(pins){
   if(!pins)return;
   pins.forEach(p=>{
     const c=COURSES[p.course];if(!c)return;
-    const h=c.holes.find(x=>x.n===p.hole);if(!h)return;
-    h.green=[p.lat,p.lng]; h.approx=false;
+    if(p.hole>=101){
+      // tee location stored as hole+100 (no schema change needed)
+      const h=c.holes.find(x=>x.n===p.hole-100);if(!h)return;
+      h.tee=[p.lat,p.lng];
+    } else {
+      const h=c.holes.find(x=>x.n===p.hole);if(!h)return;
+      h.green=[p.lat,p.lng]; h.approx=false;
+    }
   });
 }
 async function loadPins(){
@@ -1550,7 +1588,7 @@ function Dads(){
 
 // ---------- SETUP ROUND ----------
 function SetupRound(){
-  if(!S.setup.course)S.setup={course:"hilton",holes:9,nine:"front",format:"stroke",players:[],teamA:[],teamB:[]};
+  if(!S.setup.course)S.setup={course:"allander",holes:9,nine:"front",format:"stroke",players:[],teamA:[],teamB:[]};
   const st=S.setup;
   const w=el("div");
   w.appendChild(el("div","",`<div class="eyebrow">New round</div><div class="bigtitle">Set <em>it up</em></div>`));
@@ -2241,7 +2279,7 @@ function Scorecard(r){
   // header
   let head="<thead><tr><th class='hname'>Hole</th>";
   holes.forEach(h=>head+=`<th>${h.n}</th>`);
-  head+="<th>Tot</th><th>Net</th></tr>";
+  head+="<th style='color:var(--cream);font-weight:800'>GROSS</th><th style='color:var(--gold);font-weight:800'>NET</th></tr>";
   head+="<tr><td class='hname par'>Par</td>";
   holes.forEach(h=>head+=`<td class='par'>${h.par}</td>`);
   head+=`<td class='par'>${holes.reduce((a,h)=>a+h.par,0)}</td><td></td></tr></thead>`;
@@ -2257,11 +2295,24 @@ function Scorecard(r){
       const dots=info.shots>0?`<span class="strokemark" title="gets a shot">${'•'.repeat(info.shots)}</span>`:"";
       row+=`<td style="position:relative">${dots}${v!=null?`<span class="sb ${sc}">${v}</span>`:'·'}</td>`;
     });
-    row+=`<td class='par' style="color:var(--cream);font-weight:700">${gross(r,pid)||'–'}</td><td style="color:var(--lime);font-weight:800">${netTotal(r,pid)||'–'}</td>`;
+    row+=`<td style="color:var(--cream);font-weight:800;font-size:16px;background:rgba(255,255,255,.04)">${gross(r,pid)||'–'}</td><td style="color:var(--gold);font-weight:800;font-size:16px;background:rgba(217,169,78,.1)">${netTotal(r,pid)||'–'}</td>`;
     const tr=el("tr","",row);tb.appendChild(tr);
   });
   t.appendChild(tb);
   wrap.appendChild(t);
+  // clear gross vs net summary under the card
+  const summ=el("div","");summ.style.cssText="margin-top:10px;display:flex;flex-direction:column;gap:6px";
+  r.players.forEach(pid=>{
+    const p=S.players.find(x=>x.id===pid);if(!p)return;
+    const g=gross(r,pid),n=netTotal(r,pid);
+    const ph=playingHcp(p,r);
+    const rowEl=el("div","");rowEl.style.cssText="display:flex;align-items:center;gap:10px;background:rgba(0,0,0,.18);border-radius:10px;padding:8px 11px";
+    rowEl.innerHTML=`<span style="font-weight:700;color:var(--cream);flex:1">${p.name.split(' ')[0]} <span class="mini muted">(hcp ${ph})</span></span>
+      <span style="text-align:right"><span class="mini muted">Gross </span><span style="font-weight:800;color:var(--cream)">${g||'–'}</span></span>
+      <span style="text-align:right;min-width:70px"><span class="mini muted">Net </span><span style="font-weight:800;color:var(--gold);font-size:17px">${n||'–'}</span></span>`;
+    summ.appendChild(rowEl);
+  });
+  wrap.appendChild(summ);
   // legend
   const legend=el("div","mini muted");legend.style.cssText="margin-top:8px;text-align:center";
   legend.innerHTML=`<span style="color:var(--gold)">•</span> = gets a shot on that hole${r.format==="match"&&r.players.length===2?" (match: based on handicap difference)":""}`;
@@ -2700,9 +2751,17 @@ function Profile(){
   // headline metrics
   const standing=seasonStandings().find(s=>s.id===p.id);
   const wins=standing?standing.wins:0;
-  // best (lowest) gross round
-  let bestGross=null;
-  allRounds().filter(r=>r.players.includes(p.id)).forEach(r=>{const g=gross(r,p.id);if(g>0&&(bestGross===null||g<bestGross))bestGross=g;});
+  // best (lowest) gross — split by 9 vs 18 holes, completed rounds only
+  let best9=null, best18=null;
+  allRounds().filter(r=>r.players.includes(p.id)).forEach(r=>{
+    const holes=holesInPlayFor(r);
+    const complete=holes.length>0 && holes.every(h=>r.scores?.[p.id]?.[h.n]!=null);
+    if(!complete)return;
+    const g=gross(r,p.id);
+    if(g<=0)return;
+    if(r.holes===9){ if(best9===null||g<best9)best9=g; }
+    else { if(best18===null||g<best18)best18=g; }
+  });
 
   const head=el("div","card");
   head.style.cssText="position:relative;padding:0;overflow:hidden";
@@ -2719,14 +2778,34 @@ function Profile(){
         <div class="cond" style="color:var(--gold);font-size:13px;font-weight:600;margin-top:3px;text-shadow:0 1px 6px rgba(0,0,0,.9)">HANDICAP ${p.hcp}</div>
       </div>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:rgba(255,255,255,.08)">
-      ${[["Rounds",st.rounds],["Wins",wins],["Birdies",st.birdies],["Best",bestGross||'–']].map(([l,v])=>`
+    <div class="metric-row" style="display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:rgba(255,255,255,.08)">
+      ${[["Rounds",st.rounds],["Wins",wins],["Birdies",st.birdies]].map(([l,v])=>`
         <div style="background:var(--green-800);padding:12px 6px;text-align:center">
           <div class="serif" style="font-size:24px;font-weight:900;color:var(--cream)">${v}</div>
           <div class="mini muted" style="font-size:9px;letter-spacing:.1em;text-transform:uppercase">${l}</div>
         </div>`).join('')}
+      <div class="best-tile" style="background:var(--green-800);padding:12px 6px;text-align:center;cursor:pointer">
+        <div class="serif best-val" style="font-size:24px;font-weight:900;color:var(--cream)">–</div>
+        <div class="mini best-lbl" style="font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--gold)">Best</div>
+      </div>
     </div>`;
   w.appendChild(head);
+
+  // wire the Best tile to toggle between best 9 and best 18
+  setTimeout(()=>{
+    const tile=head.querySelector('.best-tile');
+    if(!tile)return;
+    const valEl=tile.querySelector('.best-val'), lblEl=tile.querySelector('.best-lbl');
+    // default to best 9 (the group plays nines most); fall back to 18 if no 9s yet
+    let mode = (best9!=null) ? 9 : (best18!=null ? 18 : 9);
+    const paint=()=>{
+      const v = mode===9 ? best9 : best18;
+      valEl.textContent = v!=null ? v : '–';
+      lblEl.innerHTML = `Best ${mode} ${ (best9!=null&&best18!=null) ? '<span style="opacity:.6">⇄</span>' : ''}`;
+    };
+    paint();
+    tile.onclick=()=>{ mode = mode===9?18:9; paint(); };
+  },0);
 
   if(st.holes===0){
     w.appendChild(el("div","card empty",`<div class="ico">📊</div>No stats yet — play a round and ${p.name.split(' ')[0]}'s profile fills up.`));
@@ -2773,7 +2852,7 @@ function Profile(){
   if(st.trend.length>=2){
     const tc=el("div","card");
     tc.innerHTML=`<div class="eyebrow">Net score trend · last ${st.trend.length} rounds</div>`;
-    tc.appendChild(sparkline(st.trend.map(t=>t.net)));
+    tc.appendChild(sparkline(st.trend));
     const first=st.trend[0].net,last=st.trend[st.trend.length-1].net;
     const better=last<first;
     tc.appendChild(el("div","mini muted",`<span style="color:${better?'var(--lime)':'var(--clay)'}">${better?'▼ trending lower (better)':'▲ trending higher'}</span> · best net ${Math.min(...st.trend.map(t=>t.net))}`));
@@ -2853,20 +2932,53 @@ function breakdownRing(st){
 }
 
 // simple sparkline; lower is better so we don't invert
-function sparkline(vals){
-  const wd=300,ht=70,pad=8;
+function sparkline(data){
+  // data: array of {net, date}. Tap/hover a point to see its score & date.
+  const vals=data.map(d=>d.net);
+  const wd=300,ht=90,pad=14;
   const min=Math.min(...vals),max=Math.max(...vals),rng=(max-min)||1;
   const pts=vals.map((v,i)=>{
-    const x=pad+(i/(vals.length-1))*(wd-2*pad);
-    const y=pad+( (v-min)/rng )*(ht-2*pad); // higher score lower on chart
+    const x=pad+(i/(vals.length-1||1))*(wd-2*pad);
+    const y=pad+((v-min)/rng)*(ht-2*pad); // higher score lower on chart
     return [x,y];
   });
-  const path=pts.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' ');
-  const dots=pts.map(p=>`<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="2.5" fill="var(--lime)"/>`).join('');
+  const path=pts.map((pt,i)=>(i?'L':'M')+pt[0].toFixed(1)+' '+pt[1].toFixed(1)).join(' ');
   const wrap=el("div");wrap.style.marginTop="8px";
-  wrap.innerHTML=`<svg width="100%" viewBox="0 0 ${wd} ${ht}" preserveAspectRatio="none" style="display:block">
-    <path d="${path}" fill="none" stroke="var(--lime)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-    ${dots}</svg>`;
+
+  // readout shown above the chart when a point is selected
+  const readout=el("div","");readout.style.cssText="text-align:center;height:20px;margin-bottom:2px;font-size:13px;color:var(--gold);font-weight:700;transition:.1s";
+  readout.textContent="Tap a point to see that round";
+  wrap.appendChild(readout);
+
+  const dotsSvg=pts.map((pt,i)=>
+    `<circle cx="${pt[0].toFixed(1)}" cy="${pt[1].toFixed(1)}" r="9" fill="transparent" class="spark-hit" data-i="${i}" style="cursor:pointer"/>
+     <circle cx="${pt[0].toFixed(1)}" cy="${pt[1].toFixed(1)}" r="3" fill="var(--gold)" class="spark-dot" data-dot="${i}"/>`
+  ).join('');
+
+  const svgWrap=el("div");
+  svgWrap.innerHTML=`<svg width="100%" viewBox="0 0 ${wd} ${ht}" preserveAspectRatio="none" style="display:block;overflow:visible">
+    <path d="${path}" fill="none" stroke="var(--gold)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    ${dotsSvg}</svg>`;
+  wrap.appendChild(svgWrap);
+
+  // interactivity: tap a point -> show its net score and date, and enlarge the dot
+  const show=(i)=>{
+    const d=data[i];
+    const dt=new Date(d.date).toLocaleDateString('en-GB',{day:'numeric',month:'short'});
+    readout.textContent=`Net ${d.net} · ${dt}`;
+    svgWrap.querySelectorAll('.spark-dot').forEach(c=>{
+      const on=c.getAttribute('data-dot')==String(i);
+      c.setAttribute('r',on?'5.5':'3');
+      c.setAttribute('fill',on?'var(--cream)':'var(--gold)');
+    });
+  };
+  setTimeout(()=>{
+    svgWrap.querySelectorAll('.spark-hit').forEach(h=>{
+      const i=+h.getAttribute('data-i');
+      h.addEventListener('click',()=>show(i));
+      h.addEventListener('mouseenter',()=>show(i));
+    });
+  },0);
   return wrap;
 }
 
@@ -2888,7 +3000,7 @@ function ensurePins(){
 ensurePins();
 
 function currentGpsHole(){
-  const courseKey = S.active?.course || "hilton";
+  const courseKey = S.active?.course || "allander";
   const c=COURSES[courseKey];
   const hn = S.gpsHole || (S.active?holesInPlay(S.active)[S.active.current].n:1);
   return {c, hole:c.holes.find(h=>h.n===hn)||c.holes[0], courseKey};
@@ -2911,6 +3023,23 @@ function GPSView(){
 
   const map=el("div");map.id="map";
   w.appendChild(map);
+
+  // Are we actually at the course? If we have a location and we're far away,
+  // hold back the yardages and serve a cheeky day-aware line instead.
+  const near=nearCourse(c);
+  if(near===false){
+    const away=el("div","card");away.style.cssText="border-color:rgba(217,169,78,.35)";
+    away.innerHTML=`<div class="eyebrow" style="color:var(--gold)">⛳ Not at the course</div>
+      <div class="serif" style="font-style:italic;color:var(--cream);font-size:16px;margin-top:8px;line-height:1.4">${awayMessage()}</div>
+      <div class="mini muted" style="margin-top:10px">Yardages kick in automatically when you're at ${c.short}.</div>`;
+    w.appendChild(away);
+    // still offer location + map so they can see where they are
+    const loc=el("button","btn btn-primary","📍 Use my location");
+    loc.style.marginTop="6px";
+    loc.onclick=startGps;
+    w.appendChild(loc);
+    return w;
+  }
 
   // yardage readout
   const yc=el("div","card");
@@ -2957,6 +3086,25 @@ function GPSView(){
   const setpin=el("button","btn btn-gold",hole.approx?"🎯 Tap here to set this green":"↻ Re-set this green");
   setpin.onclick=()=>setPinHere(hole);
   pinCard.appendChild(setpin);
+
+  // set the tee box too — pairs with the green
+  const setTee=el("button","btn btn-ghost",hole.tee?"↻ Re-set the tee":"⛳ Set the tee box (stand on it)");
+  setTee.style.marginTop="8px";
+  setTee.onclick=()=>setTeeHere(hole);
+  pinCard.appendChild(setTee);
+
+  // once both tee and green are set, show how the hole plays
+  if(hole.tee && hole.green && !hole.approx){
+    const yds=metresToYards(dist(hole.tee,hole.green));
+    const brg=bearing(hole.tee,hole.green);
+    const compass=["N","NE","E","SE","S","SW","W","NW"][Math.round(brg/45)%8];
+    const tg=el("div","");tg.style.cssText="margin-top:12px;padding:10px 12px;background:rgba(217,169,78,.12);border-radius:12px";
+    tg.innerHTML=`<div class="mini muted" style="font-weight:700;text-transform:uppercase;letter-spacing:.1em">The hole plays</div>
+      <div class="row between" style="margin-top:4px"><span class="serif" style="font-size:22px;font-weight:900;color:var(--cream)">${yds} yds</span>
+      <span style="font-weight:700;color:var(--gold)">heading ${compass} (${Math.round(brg)}°)</span></div>
+      <div class="mini muted" style="margin-top:4px">Straight-line tee to green.</div>`;
+    pinCard.appendChild(tg);
+  }
   w.appendChild(pinCard);
 
   const hint=el("div","card mini muted center","Tap anywhere on the map to measure a shot line from your position. Satellite view uses a free layer — no Google key needed.");
@@ -3012,9 +3160,11 @@ function startGps(){
   if(!navigator.geolocation){toast("No GPS on this device");return;}
   toast("Getting your location…");
   if(watchId)navigator.geolocation.clearWatch(watchId);
+  let first=true;
   watchId=navigator.geolocation.watchPosition(p=>{
     userPos=[p.coords.latitude,p.coords.longitude];
     S.acc=p.coords.accuracy;
+    if(first){ first=false; if(S.tab==="gps") { render(); return; } } // re-evaluate near/away gate once we have a fix
     placeUser(userPos);
     updateYards();
   },err=>{
@@ -3134,6 +3284,19 @@ async function setPinHere(hole){
     toast("Set on your phone (cloud save failed — will retry)");
   }
   initMap();
+  render();
+}
+async function setTeeHere(hole){
+  if(!userPos){toast("Tap 'Use my location' first");return;}
+  hole.tee=[...userPos];
+  const {courseKey}=currentGpsHole();
+  toast("Tee set ⛳ saving for the group…");
+  try{
+    await cloudSavePin(courseKey,hole.n+100,userPos[0],userPos[1]); // tee stored as hole+100
+    toast("Tee saved for the group ✓");
+  }catch(e){
+    toast("Set on your phone (cloud save failed — will retry)");
+  }
   render();
 }
 
