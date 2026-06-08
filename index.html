@@ -129,7 +129,8 @@ label{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--c
 table.sc{border-collapse:collapse;width:100%;font-size:13px}
 table.sc th,table.sc td{padding:8px 6px;text-align:center;white-space:nowrap}
 table.sc thead th{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--lime-dim);font-weight:700;border-bottom:1px solid rgba(255,255,255,.14)}
-table.sc .hname{text-align:left;font-weight:600;color:var(--cream)}
+table.sc .hname{text-align:left;font-weight:600;color:var(--cream);position:sticky;left:0;z-index:2;background:#11211a;box-shadow:2px 0 6px rgba(0,0,0,.35)}
+table.sc thead .hname{z-index:3}
 table.sc td.par{color:var(--cream-dim);font-size:11px}
 table.sc tr.tot td{border-top:1px solid rgba(255,255,255,.18);font-weight:800;color:var(--lime);padding-top:10px}
 
@@ -347,6 +348,42 @@ const WMO={ // weather code -> {label, emoji, kind}
   95:["Thunderstorm","⛈","storm"],96:["Thunderstorm","⛈","storm"],99:["Thunderstorm","⛈","storm"]
 };
 function wmo(code){return WMO[code]||["Changeable","🌥","cloud"];}
+// Moon phase for a given date (Y,M,D) -> emoji. Standard approximation, accurate to ~a day.
+const MOON_EMOJI=["🌑","🌒","🌓","🌔","🌕","🌖","🌗","🌘"]; // new → full → back
+function moonEmoji(dateStr){
+  // dateStr "YYYY-MM-DD"
+  const [y,m,d]=dateStr.split('-').map(Number);
+  // days since known new moon (2000-01-06)
+  const date=Date.UTC(y,m-1,d);
+  const known=Date.UTC(2000,0,6);
+  const days=(date-known)/86400000;
+  const synodic=29.53058867;
+  let age=((days%synodic)+synodic)%synodic; // 0..29.53
+  // map age to one of 8 phases
+  const idx=Math.round(age/synodic*8)%8;
+  return MOON_EMOJI[idx];
+}
+// only fully overcast hides the moon at night; partial cloud still shows it
+const WMO_NIGHT={3:"☁️"};
+// returns [label, emoji, kind]; at night swaps sun→moon-phase (clear/partly) or cloud (overcast)
+function wmoFor(code, isNight, dateStr){
+  const [lbl,emo,kind]=wmo(code);
+  if(isNight){
+    if(code===0||code===1||code===2) return [lbl, dateStr?moonEmoji(dateStr):"🌙", kind]; // clear / mostly clear / partly cloudy → moon visible
+    if(WMO_NIGHT[code]) return [lbl,WMO_NIGHT[code],kind]; // overcast → cloud
+  }
+  return [lbl,emo,kind];
+}
+// is the given API time string (local, "YYYY-MM-DDThh:mm") after sunset or before sunrise that day?
+function isNightAt(ts){
+  if(!WEATHER||!WEATHER.daily)return false;
+  const day=ts.slice(0,10);
+  const sr=(WEATHER.daily.sunrise||[]).find(s=>s.slice(0,10)===day);
+  const ss=(WEATHER.daily.sunset||[]).find(s=>s.slice(0,10)===day);
+  if(!sr||!ss)return false;
+  // compare on the "YYYY-MM-DDThh:mm" string directly (same day, same format → lexicographic works)
+  return ts < sr || ts >= ss;
+}
 
 async function loadWeather(force){
   if(WEATHER_LOADING)return;
@@ -357,7 +394,7 @@ async function loadWeather(force){
     try{
       const {latitude:lat,longitude:lon}=pos.coords;
       const url=`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}`+
-        `&current=temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,precipitation`+
+        `&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m,wind_direction_10m,precipitation`+
         `&hourly=precipitation_probability,precipitation,weather_code,temperature_2m`+
         `&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,wind_speed_10m_max,sunrise,sunset`+
         `&timezone=auto&wind_speed_unit=mph&forecast_days=2`;
@@ -587,7 +624,7 @@ async function cloudGetPlayers(groupId){
 async function cloudCreateRound(r){
   const body={group_id:S.cloud.groupId,course:r.course,holes:r.holes,nine:r.nine,
     format:r.format,player_ids:r.players,team_a:r.teamA,team_b:r.teamB,
-    scores:r.scores,tracking:{scorer:r.scorer||null},status:"live"};
+    scores:r.scores,tracking:{scorer:r.scorer||null,hcps:r.hcps||null},status:"live"};
   const rows=await cloudFetch("/rounds",{method:"POST",
     headers:Object.assign({Prefer:"return=representation"},CLOUD.headers),
     body:JSON.stringify(body)});
@@ -597,7 +634,7 @@ async function cloudUpdateRound(r){
   // store the match report inside the summary JSON so it persists (no extra DB column needed)
   const summaryWithReport = r.summary ? Object.assign({}, r.summary, {_report:r.report||null}) : null;
   await cloudFetch("/rounds?id=eq."+r.cloudId,{method:"PATCH",
-    body:JSON.stringify({scores:r.scores,tracking:{scorer:r.scorer||null},status:r.done?"done":"live",
+    body:JSON.stringify({scores:r.scores,tracking:{scorer:r.scorer||null,hcps:r.hcps||null},status:r.done?"done":"live",
       summary:summaryWithReport})});
 }
 async function cloudGetRounds(groupId){
@@ -725,6 +762,7 @@ function roundFromCloud(row){
     course:row.course, holes:row.holes, nine:row.nine, format:row.format,
     players:row.player_ids||[], teamA:row.team_a||[], teamB:row.team_b||[],
     scorer:(row.tracking&&row.tracking.scorer)||null,
+    hcps:(row.tracking&&row.tracking.hcps)||null,
     scores:row.scores||{}, current:0,
     done:row.status==="done", summary:row.summary||null, report:(row.summary&&row.summary._report)||null, banter:[],
     _updated:row.updated_at
@@ -835,19 +873,38 @@ function toggleChip(label,on,onclick){
 function toast(m){const t=el("div","toast",m);document.body.appendChild(t);setTimeout(()=>t.remove(),2400);}
 
 // Course handicap for a number of holes. WHS-style proportional to holes played.
-// Strokes received on a hole given a player's playing handicap (full diff already applied by caller).
+// Strokes received on a hole. `si` is the effective stroke index (1..N) and
+// `holesCount` is how many holes are in play (9 or 18) so extra strokes wrap correctly.
 function strokesOnHole(playingHcp, si, holesCount){
-  // si runs 1..18. For 9-hole games we still use the 18-hole SI ranking
-  // but only the holes in play matter; allocate by SI across 18.
+  const N = holesCount || 18;
   if(playingHcp<=0){
-    // negative (better than scratch): give strokes back on hardest holes
-    const give=Math.min(Math.abs(playingHcp),18);
-    return (si> (18-give))? -1*( /*one shot back*/1):0;
+    // negative (better than scratch): give a shot back on the easiest holes
+    const give=Math.min(Math.abs(playingHcp),N);
+    return (si> (N-give))? -1 : 0;
   }
   let s=0;
   if(si<=playingHcp) s+=1;
-  if(si<=playingHcp-18) s+=1; // for very high handicaps
+  if(si<=playingHcp-N) s+=1;   // wrap for handicaps above the hole count
+  if(si<=playingHcp-2*N) s+=1; // (very high, rare)
   return s;
+}
+
+// Effective stroke index for a hole in the context of a round.
+// 18-hole round: the hole's own SI (1..18).
+// 9-hole round: re-rank the 9 holes in play 1..9 by their SI, so a playing
+// handicap of N gives a stroke on the N hardest of the nine — true 9-hole allocation.
+let _siCache={};
+function siIn(round, hole){
+  if(round.holes!==9) return hole.si;
+  const key=round.course+"|"+round.nine;
+  if(!_siCache[key]){
+    const holes=holesInPlay(round);
+    const ranked=[...holes].sort((a,b)=>a.si-b.si); // hardest (lowest SI) first
+    const map={};
+    ranked.forEach((h,i)=>{ map[h.n]=i+1; }); // 1..9
+    _siCache[key]=map;
+  }
+  return _siCache[key][hole.n]||hole.si;
 }
 
 // net = gross - strokes
@@ -868,7 +925,9 @@ function holesInPlay(round){
 // but for a casual mixed group we use 95% allowance, common for societies). We'll use full course-hcp for net stroke,
 // and full difference for match/skins.
 function playingHcp(player, round){
-  const base = player.hcp;
+  // use the handicap locked in when the round was created, so history doesn't shift
+  // when a player's handicap later changes; fall back to current for old/un-stamped rounds
+  const base = (round && round.hcps && round.hcps[player.id]!=null) ? round.hcps[player.id] : player.hcp;
   const frac = round.holes===9 ? 0.5 : 1;
   return Math.round(base*frac);
 }
@@ -886,11 +945,11 @@ function strokeInfo(round, pid, hole){
   if(round.format==="match" && round.players.length===2){
     const oppId=round.players.find(x=>x!==pid);
     const opp=S.players.find(p=>p.id===oppId);
-    if(!opp)return {shots:strokesOnHole(myPh,hole.si),context:""};
+    if(!opp)return {shots:strokesOnHole(myPh,siIn(round,hole),round.holes),context:""};
     const oppPh=playingHcp(opp,round);
     const diff=myPh-oppPh;
     if(diff>0){ // I'm the higher handicapper -> I get the difference
-      return {shots:strokesOnHole(diff,hole.si),context:"vs "+opp.name.split(' ')[0]};
+      return {shots:strokesOnHole(diff,siIn(round,hole),round.holes),context:"vs "+opp.name.split(' ')[0]};
     }
     return {shots:0,context:"vs "+opp.name.split(' ')[0]}; // lower/equal hcp gets none
   }
@@ -901,13 +960,13 @@ function strokeInfo(round, pid, hole){
     // lowest playing hcp on opposing team is the benchmark
     let lowOpp=Infinity;
     oppTeam.forEach(id=>{const p=S.players.find(x=>x.id===id);if(p)lowOpp=Math.min(lowOpp,playingHcp(p,round));});
-    if(!isFinite(lowOpp))return {shots:strokesOnHole(myPh,hole.si),context:""};
+    if(!isFinite(lowOpp))return {shots:strokesOnHole(myPh,siIn(round,hole),round.holes),context:""};
     const diff=myPh-lowOpp;
-    return {shots:diff>0?strokesOnHole(diff,hole.si):0,context:"team strokes"};
+    return {shots:diff>0?strokesOnHole(diff,siIn(round,hole),round.holes):0,context:"team strokes"};
   }
 
   // stroke play / skins -> own full strokes
-  return {shots:strokesOnHole(myPh,hole.si),context:""};
+  return {shots:strokesOnHole(myPh,siIn(round,hole),round.holes),context:""};
 }
 
 function gross(round, pid){
@@ -927,7 +986,7 @@ function netTotal(round, pid){
   let net=0;
   h.forEach(hole=>{
     const v=round.scores[pid]?.[hole.n];
-    if(v) net += v - strokesOnHole(ph,hole.si);
+    if(v) net += v - strokesOnHole(ph,siIn(round,hole),round.holes);
   });
   return net;
 }
@@ -942,7 +1001,7 @@ function stablefordPoints(round, pid){
   h.forEach(hole=>{
     const v=round.scores[pid]?.[hole.n];
     if(!v)return;
-    const net=v - strokesOnHole(ph,hole.si);
+    const net=v - strokesOnHole(ph,siIn(round,hole),round.holes);
     const d=net-hole.par;
     let p2 = 2 - d; // par=2, each over -1, each under +1
     if(d<=-3) p2 = 5; // albatross+ caps sensibly
@@ -953,11 +1012,11 @@ function stablefordPoints(round, pid){
 // version that works on a stored round (uses player from S.players)
 function stablefordFor(r,pid){
   const p=S.players.find(x=>x.id===pid); if(!p)return 0;
-  const frac=r.holes===9?0.5:1; const ph=Math.round(p.hcp*frac);
+  const ph=playingHcp(p,r);
   const holes=holesInPlayFor(r); let pts=0;
   holes.forEach(h=>{
     const v=r.scores?.[pid]?.[h.n]; if(!v)return;
-    const net=v-strokesOnHole(ph,h.si); const d=net-h.par;
+    const net=v-strokesOnHole(ph,siIn(r,h),r.holes); const d=net-h.par;
     let p2=2-d; if(d<=-3)p2=5; pts+=Math.max(0,p2);
   });
   return pts;
@@ -977,9 +1036,9 @@ function matchPlayResult(round, aId, bId){
     // allocate diff strokes to the higher handicapper
     let na=ga, nb=gb;
     if(diff>0){ // A higher hcp -> A gets strokes
-      na = ga - strokesOnHole(diff,hole.si);
+      na = ga - strokesOnHole(diff,siIn(round,hole),round.holes);
     } else if(diff<0){
-      nb = gb - strokesOnHole(Math.abs(diff),hole.si);
+      nb = gb - strokesOnHole(Math.abs(diff),siIn(round,hole),round.holes);
     }
     if(na<nb) state++;
     else if(nb<na) state--;
@@ -999,7 +1058,7 @@ function skinsResult(round){
     const nets=pl.map(p=>{
       const g=round.scores[p.id]?.[hole.n];
       if(!g) return {id:p.id,net:Infinity,played:false};
-      return {id:p.id,net:g-strokesOnHole(playingHcp(p,round),hole.si),played:true};
+      return {id:p.id,net:g-strokesOnHole(playingHcp(p,round),siIn(round,hole),round.holes),played:true};
     });
     if(nets.some(n=>!n.played)){holeLog.push({hole:hole.n,winner:null,carry});return;}
     const min=Math.min(...nets.map(n=>n.net));
@@ -1026,7 +1085,7 @@ function teamMatchResult(round){
       let b=Infinity,ok=false;
       team.forEach(id=>{
         const g=round.scores[id]?.[hole.n];
-        if(g){ok=true;const p=S.players.find(x=>x.id===id);b=Math.min(b,g-strokesOnHole(playingHcp(p,round),hole.si));}
+        if(g){ok=true;const p=S.players.find(x=>x.id===id);b=Math.min(b,g-strokesOnHole(playingHcp(p,round),siIn(round,hole),round.holes));}
       });
       return ok?b:null;
     };
@@ -1067,9 +1126,12 @@ function render(){
     else if(S.tab==="dads") v.appendChild(Dads());
     else if(S.tab==="result") v.appendChild(ResultThread(S.openResult));
     else if(S.tab==="profile") v.appendChild(Profile());
+    else if(S.tab==="dadrounds") v.appendChild(DadRounds());
+    else if(S.tab==="radar") v.appendChild(RadarView());
     app.appendChild(v);
     app.appendChild(Nav());
     if(S.tab==="gps") setTimeout(initMap,60);
+    if(S.tab==="radar") setTimeout(initRadar,60);
   }catch(err){
     console.error("render error on tab",S.tab,err);
     renderError(app,err);
@@ -1283,6 +1345,7 @@ function Home(){
 
   // weather + cheeky advice
   w.appendChild(WeatherCard());
+  w.appendChild(MidgeCard());
   w.appendChild(EscapeWindows());
 
   // latest result + comments (replaces the old Banter tab)
@@ -1343,6 +1406,72 @@ function Home(){
 }
 function greeting(){const h=new Date().getHours();return h<12?"Morning":h<18?"Afternoon":"Evening";}
 
+// ---- Midge forecast (calculated from weather; Scotland, May–Sep) ----
+// Midges thrive in still, damp, mild, overcast conditions and at dawn/dusk.
+// Wind is the dominant factor — they can't fly much above ~7 mph.
+function midgeRisk(){
+  const W=WEATHER; if(!W||!W.current) return null;
+  const cur=W.current;
+  const month=new Date().getMonth()+1; // 1-12
+  // out of season: essentially no midges Oct–Apr
+  const inSeason = month>=5 && month<=9;
+  const wind = cur.wind_speed_10m!=null?cur.wind_speed_10m:10;     // km/h or mph? open-meteo default km/h
+  // app requests wind in mph elsewhere? check: we display "${wind} mph" using Math.round(cur.wind_speed_10m)
+  const windMph = wind; // treated as mph in the app already
+  const temp = cur.temperature_2m!=null?cur.temperature_2m:12;
+  const humidity = cur.relative_humidity_2m!=null?cur.relative_humidity_2m:80;
+  const code = cur.weather_code;
+  const hour = cur.time?parseInt(cur.time.slice(11,13),10):12;
+
+  if(!inSeason) return {level:0, label:"None", text:"Out of midge season — enjoy the peace.", emo:"❄️"};
+
+  let score=0;
+  // wind: the big one
+  if(windMph<2) score+=4;
+  else if(windMph<4) score+=3;
+  else if(windMph<7) score+=2;
+  else if(windMph<10) score+=1; // breezy — they struggle
+  // temp: midges like mild (10–20°), go quiet when cold or hot
+  if(temp>=10 && temp<=20) score+=2;
+  else if(temp>=8 && temp<22) score+=1;
+  else if(temp<6 || temp>25) score-=1;
+  // damp/overcast loved; bright/dry hated
+  if(humidity>=80) score+=2; else if(humidity>=65) score+=1; else if(humidity<50) score-=1;
+  if(code===0||code===1) score-=1;       // clear/sunny -> fewer
+  if(code===2||code===3) score+=1;        // cloud/overcast -> more
+  if(code>=51 && code<=67) score+=1;      // drizzle/light rain damp -> more (heavy rain less, but keep simple)
+  // dawn/dusk peak
+  if((hour>=4&&hour<=8) || (hour>=18&&hour<=22)) score+=2;
+  else if(hour>=9&&hour<=16) score-=1;    // midday lull
+
+  // map score to a level
+  let level, label, emo, text;
+  if(score<=1){ level=1; label="Low"; emo="🟢"; text="Barely a midge about. Crack on."; }
+  else if(score<=3){ level=2; label="Moderate"; emo="🟡"; text="A few about — fine if you keep moving."; }
+  else if(score<=5){ level=3; label="High"; emo="🟠"; text="Bring the Smidge. They're hungry."; }
+  else { level=4; label="Midgepocalypse"; emo="🔴"; text="Still, damp and swarming. Cover up or stay in."; }
+  return {level,label,text,emo,windMph:Math.round(windMph)};
+}
+function MidgeCard(){
+  const m=midgeRisk();
+  if(!m) return el("div","");
+  const colors={0:"#7fb0c4",1:"var(--lime)",2:"#d9c24e",3:"#e08a3c",4:"#e05a4a"};
+  const c=colors[m.level]||"var(--cream)";
+  const card=el("div","card");
+  card.innerHTML=`<div class="row between">
+      <div class="eyebrow">🦟 Midge forecast</div>
+      <div class="mini muted">Scotland · calculated</div>
+    </div>
+    <div class="row" style="gap:14px;margin-top:8px;align-items:center">
+      <div style="font-size:40px;line-height:1">${m.emo}</div>
+      <div style="flex:1">
+        <div class="serif" style="font-size:24px;font-weight:900;color:${c};line-height:1">${m.label}</div>
+        <div class="mini muted" style="margin-top:3px">${m.text}</div>
+      </div>
+    </div>
+    <div class="mini muted" style="margin-top:8px">Estimated from wind, temperature, humidity and time of day — not the official trap forecast.</div>`;
+  return card;
+}
 function WeatherCard(){
   const card=el("div","card");
   card.style.background="linear-gradient(150deg, var(--green-700), var(--green-800))";
@@ -1362,7 +1491,7 @@ function WeatherCard(){
 
   const cur=WEATHER.current||{};
   const daily=WEATHER.daily||{};
-  const [curLabel,curEmoji,curKind]=wmo(cur.weather_code);
+  const [curLabel,curEmoji,curKind]=wmoFor(cur.weather_code, cur.time?isNightAt(cur.time):false, cur.time?cur.time.slice(0,10):null);
   const t=Math.round(cur.temperature_2m);
   const wind=Math.round(cur.wind_speed_10m);
 
@@ -1420,7 +1549,7 @@ function WeatherCard(){
       hr.innerHTML=`<div class="mini muted" style="font-weight:700;text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px">Next 6 hours</div>`;
       const row=el("div","");row.style.cssText="display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch";
       upcoming.forEach(h=>{
-        const [lbl,emo]=wmo(h.code);
+        const [lbl,emo]=wmoFor(h.code, isNightAt(h.ts), h.ts.slice(0,10));
         const hh=parseInt(h.ts.slice(11,13),10);
         const time=(hh%12||12)+(hh<12?'am':'pm');
         const mm=(h.mm!=null)?(Math.round(h.mm*10)/10):0;
@@ -1464,38 +1593,112 @@ function WeatherCard(){
     strip.appendChild(box);
   });
   card.appendChild(strip);
+
+  // click-through to full-screen rain radar
+  const radarBtn=el("button","btn btn-ghost","🌧 View rain radar");
+  radarBtn.style.cssText="margin-top:12px;width:100%";
+  radarBtn.onclick=()=>{ S.tab="radar"; render(); };
+  card.appendChild(radarBtn);
+
   return card;
+}
+
+// Build the daylight hours for a given date key, marking which are "playable"
+// (0mm rain AND <30% chance), and grouping consecutive playable hours into windows of 2+.
+function daylightHours(dateKey){
+  const W=WEATHER; if(!W||!W.hourly||!W.hourly.time)return null;
+  const H=W.hourly;
+  const sr=((W.daily&&W.daily.sunrise)||[]).find(s=>s.slice(0,10)===dateKey);
+  const ss=((W.daily&&W.daily.sunset)||[]).find(s=>s.slice(0,10)===dateKey);
+  const srH = sr?parseInt(sr.slice(11,13),10):6;
+  const ssH = ss?parseInt(ss.slice(11,13),10):21;
+  const nowStr = (W.current&&W.current.time)?W.current.time.slice(0,13):new Date().toISOString().slice(0,13);
+  const hours=[];
+  for(let i=0;i<H.time.length;i++){
+    const ts=H.time[i];
+    if(ts.slice(0,10)!==dateKey)continue;
+    const hh=parseInt(ts.slice(11,13),10);
+    if(hh<srH||hh>ssH)continue;           // daylight only
+    if(ts.slice(0,13) < nowStr)continue;  // skip hours already gone (today)
+    const prob=H.precipitation_probability?.[i];
+    const mm=H.precipitation?.[i]||0;
+    const playable=(mm<=0) && ((prob==null?100:prob)<30);
+    hours.push({ts,hh,prob,mm,code:H.weather_code?.[i],temp:H.temperature_2m?.[i],playable});
+  }
+  // mark hours that belong to a run of 2+ consecutive playable hours
+  let i=0;
+  while(i<hours.length){
+    if(hours[i].playable){
+      let j=i; while(j<hours.length && hours[j].playable) j++;
+      const runLen=j-i;
+      if(runLen>=2) for(let k=i;k<j;k++) hours[k].window=true;
+      i=j;
+    } else i++;
+  }
+  return hours;
 }
 
 function EscapeWindows(){
   const card=el("div","card");
-  if(!WEATHER||!WEATHER.hourly){
-    // weather still loading; show nothing rather than an empty box
-    return el("div","");
-  }
-  const wins=dryWindows(2);
-  card.innerHTML=`<div class="eyebrow">🍃 Escape windows · next 2 days</div>`;
-  if(!wins.length){
-    card.appendChild(el("div","mini muted",`No fully-dry 2-hour windows in the forecast. Either tough it out in the waterproofs… or it's a 19th-hole kind of week.`));
-    return card;
-  }
-  card.appendChild(el("div","mini muted",`Dry daylight slots long enough for a cheeky 9:`));
-  wins.forEach((win,i)=>{
-    const [lbl,emo]=wmo(win.code);
-    const row=el("div","");
-    row.style.cssText="display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid rgba(255,255,255,.07)";
-    const hrsTxt = win.hours>=4?`${Math.floor(win.hours)}h — time for 18`:`${Math.floor(win.hours)}h — quick 9`;
-    row.innerHTML=`<div style="font-size:26px">${emo}</div>
-      <div style="flex:1">
-        <div style="font-weight:700;color:var(--cream)">${fmtWindowDay(win.start)} · ${fmtWindowTime(win.start)}–${fmtWindowTime(win.end)}</div>
-        <div class="mini muted">${hrsTxt} · ${win.temp}° · dry</div>
-      </div>
-      <div class="tag" style="background:rgba(217,169,78,.15);color:var(--gold)">0% 🌧</div>`;
-    card.appendChild(row);
+  if(!WEATHER||!WEATHER.hourly){ return el("div",""); }
+  card.innerHTML=`<div class="eyebrow">🍃 Windows of opportunity</div>
+    <div class="mini muted" style="margin-bottom:4px">Daylight hours · highlighted = 2+ hours dry & under 30% rain</div>`;
+
+  const todayKey=new Date().toISOString().slice(0,10);
+  const tomDate=new Date();tomDate.setDate(tomDate.getDate()+1);
+  const tomKey=tomDate.toISOString().slice(0,10);
+
+  let anyWindow=false;
+  [["Today",todayKey],["Tomorrow",tomKey]].forEach(([lbl,key])=>{
+    const hours=daylightHours(key);
+    const section=el("div","");section.style.cssText="margin-top:12px";
+    section.innerHTML=`<div class="mini" style="font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--gold);margin-bottom:6px">${lbl}</div>`;
+    if(!hours||!hours.length){
+      section.appendChild(el("div","mini muted",lbl==="Today"?"No daylight hours left today.":"Forecast not available yet."));
+      card.appendChild(section);
+      return;
+    }
+    const row=el("div","");row.style.cssText="display:flex;gap:5px;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch";
+    hours.forEach(h=>{
+      if(h.window)anyWindow=true;
+      const [l,emo]=wmoFor(h.code, isNightAt(h.ts), h.ts.slice(0,10));
+      const time=(h.hh%12||12)+(h.hh<12?'a':'p');
+      const box=el("div","");
+      box.style.cssText=`flex:0 0 auto;width:50px;border-radius:10px;padding:8px 4px;text-align:center;${h.window?'background:rgba(124,199,90,.22);border:1px solid var(--lime)':'background:rgba(0,0,0,.18);border:1px solid transparent'}`;
+      box.innerHTML=`<div class="mini muted" style="font-size:10px;font-weight:700">${time}</div>
+        <div style="font-size:16px;margin:2px 0">${emo}</div>
+        <div class="mini" style="font-size:10px;font-weight:700;color:${h.window?'var(--lime)':'var(--cream-dim)'}">${h.prob==null?'–':h.prob+'%'}</div>
+        <div class="mini muted" style="font-size:9px">${h.temp!=null?Math.round(h.temp)+'°':''}</div>`;
+      row.appendChild(box);
+    });
+    section.appendChild(row);
+    // summarise the windows in words
+    const wins=summariseWindows(hours);
+    if(wins.length){
+      const txt=wins.map(wn=>`${fmtHr(wn.from)}–${fmtHr(wn.to)}`).join(', ');
+      section.appendChild(el("div","mini",`<span style="color:var(--lime);font-weight:700">▸ Playable: ${txt}</span>`));
+    } else {
+      section.appendChild(el("div","mini muted","No 2-hour dry window in daylight."));
+    }
+    card.appendChild(section);
   });
-  card.appendChild(el("div","banter",`“${pick(WINDOW_QUIPS)}”`));
+
+  if(anyWindow) card.appendChild(el("div","banter",`“${pick(WINDOW_QUIPS)}”`));
   return card;
 }
+// turn the per-hour flags into {from,to} window spans
+function summariseWindows(hours){
+  const out=[];let i=0;
+  while(i<hours.length){
+    if(hours[i].window){
+      let j=i;while(j<hours.length&&hours[j].window)j++;
+      out.push({from:hours[i].hh, to:hours[j-1].hh+1});
+      i=j;
+    } else i++;
+  }
+  return out;
+}
+function fmtHr(h){h=((h%24)+24)%24;return (h%12||12)+(h<12?'am':'pm');}
 function fmtFormat(f){return {stroke:"Stroke Play",stableford:"Stableford",match:"Match Play",team:"Team Match Play",skins:"Skins"}[f]||f;}
 
 
@@ -1723,8 +1926,10 @@ async function startRound(){
     course:st.course,holes:st.holes,nine:st.nine,format:st.format,
     players:[...st.players],teamA:[...st.teamA],teamB:[...st.teamB],
     scorer:S.meId||null,   // whoever starts keeps the card
+    hcps:{},               // lock in each player's handicap as it is right now
     scores:{},current:0,banter:[]
   };
+  st.players.forEach(p=>{const pl=S.players.find(x=>x.id===p);r.hcps[p]=pl?pl.hcp:0;});
   st.players.forEach(p=>{r.scores[p]={};});
   S.active=r;
   S.iAmScorer=true;   // this device started it
@@ -2470,10 +2675,28 @@ function playerStats(pid){
 // net total that works on stored rounds
 function netTotalFor(r,pid){
   const p=S.players.find(x=>x.id===pid); if(!p)return 0;
-  const frac=r.holes===9?0.5:1; const ph=Math.round(p.hcp*frac);
+  const ph=playingHcp(p,r);
   const holes=holesInPlayFor(r); let net=0,any=false;
-  holes.forEach(h=>{const v=r.scores?.[pid]?.[h.n];if(v){any=true;net+=v-strokesOnHole(ph,h.si);}});
+  holes.forEach(h=>{const v=r.scores?.[pid]?.[h.n];if(v){any=true;net+=v-strokesOnHole(ph,siIn(r,h),r.holes);}});
   return any?net:0;
+}
+
+// Handicap history for a player: the sequence of handicaps they've actually played off
+// (read from each round's locked-in hcps, in date order) plus their current handicap.
+// Returns [{date, hcp, label}] with one entry per CHANGE, newest last.
+function hcpHistory(pid){
+  const p=S.players.find(x=>x.id===pid); if(!p)return [];
+  const rounds=S.rounds.filter(r=>r.players.includes(pid) && r.hcps && r.hcps[pid]!=null)
+    .sort((a,b)=>(a.date||0)-(b.date||0));
+  const points=[];
+  let last=null;
+  rounds.forEach(r=>{
+    const h=r.hcps[pid];
+    if(h!==last){ points.push({date:r.date, hcp:h}); last=h; }
+  });
+  // ensure the current handicap is the final point (manual update before next round)
+  if(last===null || p.hcp!==last){ points.push({date:Date.now(), hcp:p.hcp}); }
+  return points;
 }
 
 // head-to-head: for each round both played, who had the lower net
@@ -2502,7 +2725,7 @@ function courseRecordsHeldBy(pid){
         const g=r.scores?.[plid]?.[h.n]; if(!g)return;
         const pl=S.players.find(x=>x.id===plid); if(!pl)return;
         const frac=r.holes===9?0.5:1; const ph=Math.round(pl.hcp*frac);
-        const net=g-strokesOnHole(ph,h.si);
+        const net=g-strokesOnHole(ph,siIn(r,h),r.holes);
         const k=r.course+"#"+h.n;
         if(!best[k]||net<best[k].net){best[k]={net,pid:plid,name:h.name,course:r.course,n:h.n};}
       });
@@ -2798,7 +3021,11 @@ function Profile(){
       </div>
     </div>
     <div class="metric-row" style="display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:rgba(255,255,255,.08)">
-      ${[["Rounds",st.rounds],["Wins",wins],["Birdies",st.birdies]].map(([l,v])=>`
+      <div class="rounds-tile" style="background:var(--green-800);padding:12px 6px;text-align:center;cursor:pointer">
+        <div class="serif" style="font-size:24px;font-weight:900;color:var(--cream)">${st.rounds}</div>
+        <div class="mini" style="font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--gold)">Rounds <span style="opacity:.6">›</span></div>
+      </div>
+      ${[["Wins",wins],["Birdies",st.birdies]].map(([l,v])=>`
         <div style="background:var(--green-800);padding:12px 6px;text-align:center">
           <div class="serif" style="font-size:24px;font-weight:900;color:var(--cream)">${v}</div>
           <div class="mini muted" style="font-size:9px;letter-spacing:.1em;text-transform:uppercase">${l}</div>
@@ -2809,6 +3036,12 @@ function Profile(){
       </div>
     </div>`;
   w.appendChild(head);
+
+  // tap Rounds -> dad's rounds list (scorecards, newest first)
+  setTimeout(()=>{
+    const rt=head.querySelector('.rounds-tile');
+    if(rt)rt.onclick=()=>{ S.dadRoundsId=p.id; S.tab="dadrounds"; render(); };
+  },0);
 
   // wire the Best tile to cycle through available views (9/18 × gross/net)
   setTimeout(()=>{
@@ -2916,6 +3149,37 @@ function Profile(){
     w.appendChild(tc);
   }
 
+  // ---- handicap history ----
+  const hist=hcpHistory(p.id);
+  if(hist.length>=1){
+    const hc=el("div","card");
+    hc.innerHTML=`<div class="row between"><div class="eyebrow">📉 Handicap history</div><div class="serif" style="font-weight:900;color:var(--gold);font-size:20px">${p.hcp}</div></div>`;
+    if(hist.length>=2){
+      // trend chart (reuse sparkline; lower = better, same as scores)
+      hc.appendChild(sparkline(hist.map(h=>({net:h.hcp,date:h.date}))));
+      const first=hist[0].hcp,last=hist[hist.length-1].hcp;
+      const moved=last-first;
+      const word = moved<0?`▼ down ${Math.abs(moved)} since you started tracking`:moved>0?`▲ up ${moved}`:"holding steady";
+      hc.appendChild(el("div","mini muted",`<span style="color:${moved<0?'var(--lime)':moved>0?'var(--clay)':'var(--cream-dim)'}">${word}</span>`));
+    }
+    // change list, newest first
+    const list=el("div","");list.style.cssText="margin-top:10px;display:flex;flex-direction:column;gap:5px";
+    [...hist].reverse().forEach((h,i,arr)=>{
+      const d=new Date(h.date).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'2-digit'});
+      const prev = arr[i+1];
+      let delta="";
+      if(prev){ const diff=h.hcp-prev.hcp; delta = diff<0?`<span style="color:var(--lime)">▼${Math.abs(diff)}</span>`:diff>0?`<span style="color:var(--clay)">▲${diff}</span>`:""; }
+      const isNow = i===0;
+      const rowEl=el("div","");rowEl.style.cssText="display:flex;align-items:center;gap:10px;background:rgba(0,0,0,.18);border-radius:9px;padding:7px 11px";
+      rowEl.innerHTML=`<span style="font-weight:800;color:var(--cream);min-width:34px">${h.hcp}</span>
+        <span class="mini muted" style="flex:1">${isNow?'now':d} ${delta}</span>`;
+      list.appendChild(rowEl);
+    });
+    hc.appendChild(list);
+    hc.appendChild(el("div","mini muted",`Tracked from rounds played. Update your handicap on the Dads screen — your next round locks it in.`));
+    w.appendChild(hc);
+  }
+
   // ---- head to head ----
   const h2h=headToHead(p.id);
   const oppIds=Object.keys(h2h);
@@ -2965,7 +3229,154 @@ function Profile(){
 
   return w;
 }
+
+// A dad's rounds, newest first, each with its scorecard
+function DadRounds(){
+  const w=el("div");
+  const p=S.players.find(x=>x.id===S.dadRoundsId);
+  if(!p){ S.tab="dads"; return Dads(); }
+  const back=el("button","del",`◂ Back to ${p.name.split(' ')[0]}`);
+  back.onclick=()=>{S.profileId=p.id;S.tab="profile";render();};
+  w.appendChild(back);
+
+  const title=el("div","card");
+  title.style.cssText="display:flex;align-items:center;gap:12px";
+  title.innerHTML=`${avatarHTML(p,44)}<div><div class="serif" style="font-size:20px;font-weight:900;color:var(--cream)">${p.name.split(' ')[0]}'s rounds</div><div class="mini muted">Tap a round to see the scorecard</div></div>`;
+  w.appendChild(title);
+
+  const mine=S.rounds.filter(r=>r.players.includes(p.id)).sort((a,b)=>(b.date||0)-(a.date||0));
+  if(!mine.length){
+    w.appendChild(el("div","card empty",`<div class="ico">📋</div>No rounds yet for ${p.name.split(' ')[0]}.`));
+    return w;
+  }
+  mine.forEach(r=>{
+    const c=COURSES[r.course]||{short:"Course"};
+    const d=new Date(r.date);
+    const g=gross(r,p.id), n=netTotal(r,p.id);
+    const card=el("div","card");
+    const headRow=el("div","row between");headRow.style.cursor="pointer";
+    headRow.innerHTML=`<div>
+        <div style="font-weight:700;color:var(--cream)">${d.toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'})}</div>
+        <div class="mini muted">${c.short} · ${r.holes} holes · ${fmtFormat(r.format)}</div>
+      </div>
+      <div style="text-align:right">
+        <div><span class="mini muted">Gross </span><span style="font-weight:800;color:var(--cream)">${g||'–'}</span> <span class="mini muted">Net </span><span style="font-weight:800;color:var(--gold)">${n||'–'}</span></div>
+        <div class="mini muted" style="margin-top:2px">tap for scorecard ›</div>
+      </div>`;
+    card.appendChild(headRow);
+    const scw=el("div","hidden");scw.style.marginTop="10px";
+    let built=false;
+    headRow.onclick=()=>{ if(!built){scw.appendChild(Scorecard(r));built=true;} scw.classList.toggle("hidden"); };
+    card.appendChild(scw);
+    w.appendChild(card);
+  });
+  return w;
+}
 function fmtVsPar(d){return d===0?"E":d>0?"+"+d:""+d;}
+
+// ---------- RAIN RADAR (RainViewer) ----------
+let RADAR_MAP=null, RADAR_LAYERS={}, RADAR_FRAMES=[], RADAR_IDX=0, RADAR_TIMER=null, RADAR_HOST="";
+function RadarView(){
+  const w=el("div");
+  const back=el("button","del","◂ Back");back.onclick=()=>{stopRadar();S.tab="home";render();};
+  w.appendChild(back);
+  w.appendChild(el("div","eyebrow","Rain radar"));
+
+  const mapBox=el("div");mapBox.id="radarmap";
+  mapBox.style.cssText="height:60vh;border-radius:16px;overflow:hidden;margin-top:8px;background:var(--green-800)";
+  w.appendChild(mapBox);
+
+  // controls
+  const ctrl=el("div","card");ctrl.style.cssText="margin-top:10px";
+  ctrl.innerHTML=`<div class="row between">
+    <button class="btn btn-gold" id="radarplay" style="min-width:96px">⏸ Pause</button>
+    <div class="mini muted" id="radartime">Loading radar…</div>
+  </div>
+  <input type="range" id="radarscrub" min="0" max="0" value="0" style="width:100%;margin-top:12px;accent-color:var(--gold)">
+  <div class="mini muted" style="margin-top:8px;text-align:center">Light <span style="color:#4FC3F7">●</span> → Heavy <span style="color:#E53935">●</span> rain · past two hours into the near future</div>`;
+  w.appendChild(ctrl);
+
+  const note=el("div","card mini muted center","Radar data from RainViewer. If it doesn't load, the service may be briefly unavailable — the map will still show.");
+  note.style.marginTop="10px";
+  w.appendChild(note);
+  return w;
+}
+
+async function initRadar(){
+  const box=document.getElementById("radarmap");
+  if(!box || typeof L==="undefined"){ return; }
+  // reset any prior state (the map div is freshly rebuilt each render)
+  stopRadar();
+  if(RADAR_MAP){ try{RADAR_MAP.remove();}catch(e){} }
+  RADAR_MAP=null; RADAR_LAYERS={}; RADAR_FRAMES=[]; RADAR_IDX=0;
+  try{
+    // centre on user if known, else on the course
+    const centre = userPos || (COURSES.allander && COURSES.allander.centre) || [55.97,-4.35];
+    RADAR_MAP=L.map("radarmap",{zoomControl:false,attributionControl:false}).setView(centre, 9);
+    L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",{maxZoom:19}).addTo(RADAR_MAP);
+    L.control.zoom({position:"bottomright"}).addTo(RADAR_MAP);
+  }catch(e){ console.warn("radar map failed",e); return; }
+
+  // fetch RainViewer frame index (past + nowcast)
+  try{
+    const r=await fetch("https://api.rainviewer.com/public/weather-maps.json");
+    const data=await r.json();
+    RADAR_HOST=data.host;
+    const past=(data.radar&&data.radar.past)||[];
+    const now=(data.radar&&data.radar.nowcast)||[];
+    RADAR_FRAMES=past.concat(now);
+    if(!RADAR_FRAMES.length)throw new Error("no frames");
+    RADAR_IDX=Math.max(0,past.length-1); // start at "now"
+    const scrub=document.getElementById("radarscrub");
+    if(scrub){scrub.max=String(RADAR_FRAMES.length-1);scrub.value=String(RADAR_IDX);scrub.oninput=()=>{stopRadar();showFrame(+scrub.value);};}
+    const play=document.getElementById("radarplay");
+    if(play)play.onclick=toggleRadar;
+    showFrame(RADAR_IDX);
+    startRadarLoop();
+  }catch(e){
+    console.warn("radar frames failed",e);
+    const t=document.getElementById("radartime");
+    if(t)t.textContent="Radar unavailable right now — map shown without rain.";
+  }
+}
+function radarTileUrl(frame){
+  // 256px tiles, colour scheme 4 (universal blue→red), smooth+snow
+  return `${RADAR_HOST}${frame.path}/256/{z}/{x}/{y}/4/1_1.png`;
+}
+function showFrame(i){
+  if(!RADAR_MAP||!RADAR_FRAMES[i])return;
+  RADAR_IDX=i;
+  const frame=RADAR_FRAMES[i];
+  // add this frame's layer if not already, fade others out
+  if(!RADAR_LAYERS[i]){
+    RADAR_LAYERS[i]=L.tileLayer(radarTileUrl(frame),{opacity:0,zIndex:5});
+    RADAR_LAYERS[i].addTo(RADAR_MAP);
+  }
+  Object.entries(RADAR_LAYERS).forEach(([k,layer])=>{ layer.setOpacity(+k===i?0.7:0); });
+  const scrub=document.getElementById("radarscrub");if(scrub)scrub.value=String(i);
+  const t=document.getElementById("radartime");
+  if(t){
+    const d=new Date(frame.time*1000);
+    const past=RADAR_FRAMES.filter((f,idx)=>idx<i).length;
+    const isFuture = frame.time*1000 > Date.now();
+    t.textContent=(isFuture?"Forecast ":"")+d.toLocaleTimeString('en-GB',{hour:'numeric',minute:'2-digit'});
+  }
+}
+function startRadarLoop(){
+  stopRadar();
+  RADAR_TIMER=setInterval(()=>{
+    let next=RADAR_IDX+1;
+    if(next>=RADAR_FRAMES.length)next=0;
+    showFrame(next);
+  },700);
+  const play=document.getElementById("radarplay");if(play)play.textContent="⏸ Pause";
+}
+function stopRadar(){
+  if(RADAR_TIMER)clearInterval(RADAR_TIMER);
+  RADAR_TIMER=null;
+  const play=document.getElementById("radarplay");if(play)play.textContent="▶ Play";
+}
+function toggleRadar(){ if(RADAR_TIMER)stopRadar(); else startRadarLoop(); }
 
 // donut ring of score distribution
 function breakdownRing(st){
