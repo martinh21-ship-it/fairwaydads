@@ -183,6 +183,9 @@ table.sc tr.tot td{border-top:1px solid rgba(255,255,255,.18);font-weight:800;co
 .empty{text-align:center;padding:34px 14px;color:var(--cream-dim)}
 .empty .ico{font-size:40px;margin-bottom:10px;opacity:.6}
 .banter{font-style:italic;font-family:'Fraunces';color:var(--gold);font-size:14px}
+.modaloverlay{position:fixed;inset:0;z-index:400;background:rgba(6,12,9,.8);backdrop-filter:blur(5px);display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:34px 14px}
+.modalcard{background:linear-gradient(160deg,var(--green-700),var(--green-800));border:1px solid rgba(217,169,78,.35);border-radius:20px;max-width:460px;width:100%;padding:22px;box-shadow:0 20px 60px rgba(0,0,0,.5);animation:popin .25s ease;margin-bottom:40px}
+@keyframes popin{from{opacity:0;transform:scale(.94) translateY(10px)}to{opacity:1;transform:none}}
 .toast{position:fixed;bottom:100px;left:50%;transform:translateX(-50%);z-index:300;
   background:var(--lime);color:var(--green-900);padding:12px 20px;border-radius:30px;font-weight:700;
   box-shadow:var(--shadow);animation:toast 2.4s ease forwards;max-width:90%;text-align:center}
@@ -386,8 +389,9 @@ function isNightAt(ts){
 }
 
 async function loadWeather(force){
+  if(force) WEATHER_LOADING=false;          // a manual refresh clears any stuck load
   if(WEATHER_LOADING)return;
-  if(!force && WEATHER && Date.now()-WEATHER_TS < 30*60*1000)return; // cache 30 min
+  if(!force && WEATHER && Date.now()-WEATHER_TS < 15*60*1000)return; // cache 15 min
   if(!navigator.geolocation)return;
   WEATHER_LOADING=true;
   navigator.geolocation.getCurrentPosition(async pos=>{
@@ -401,7 +405,7 @@ async function loadWeather(force){
       const r=await fetch(url);
       if(!r.ok)throw new Error("weather "+r.status);
       WEATHER=await r.json(); WEATHER_TS=Date.now();
-      if(S.tab==="home")render();
+      if(S.tab==="home"||S.tab==="weather")render();
     }catch(e){ console.warn("weather failed",e); }
     finally{ WEATHER_LOADING=false; }
   },err=>{ WEATHER_LOADING=false; console.warn("weather geo blocked",err); },
@@ -514,9 +518,17 @@ function pushWindow(arr,run,minHours){
     arr.push({start:run.start,end:run.end,hours:hrs,temp:avgT,code});
   }
 }
+function wxAgo(){
+  const mins=Math.round((Date.now()-WEATHER_TS)/60000);
+  if(mins<1)return"just now";
+  if(mins<60)return mins+"m ago";
+  return Math.round(mins/60)+"h ago";
+}
 function fmtWindowTime(ts){
   const d=new Date(ts);
-  return d.toLocaleTimeString('en-GB',{hour:'numeric',minute:'2-digit',hour12:true}).replace(':00','');
+  let h=d.getHours();const m=d.getMinutes();
+  const ap=h<12?'am':'pm'; h=h%12||12;
+  return m?`${h}:${String(m).padStart(2,'0')}${ap}`:`${h}${ap}`;
 }
 function fmtWindowDay(ts){
   const d=new Date(ts), now=new Date();
@@ -925,11 +937,11 @@ function holesInPlay(round){
 // but for a casual mixed group we use 95% allowance, common for societies). We'll use full course-hcp for net stroke,
 // and full difference for match/skins.
 function playingHcp(player, round){
-  // use the handicap locked in when the round was created, so history doesn't shift
-  // when a player's handicap later changes; fall back to current for old/un-stamped rounds
+  // base is the decimal Handicap Index, locked in at round creation so history doesn't shift
   const base = (round && round.hcps && round.hcps[player.id]!=null) ? round.hcps[player.id] : player.hcp;
-  const frac = round.holes===9 ? 0.5 : 1;
-  return Math.round(base*frac);
+  const raw = round.holes===9 ? base/2 : base;   // half index for a nine
+  // round ONCE, here — half rounds DOWN (e.g. 7.5 -> 7, 7.6 -> 8)
+  return Math.ceil(raw - 0.5);
 }
 
 // How many strokes does player `pid` get on this hole, in the context of the round's format?
@@ -1030,21 +1042,22 @@ function matchPlayResult(round, aId, bId){
   const h=holesInPlay(round);
   let state=0; // + means A up
   let lastDecided=0;
-  h.forEach(hole=>{
+  let decidedAt=0;   // holes played when the match became unwinnable for the trailer
+  h.forEach((hole,i)=>{
     const ga=round.scores[aId]?.[hole.n], gb=round.scores[bId]?.[hole.n];
     if(!ga||!gb) return;
-    // allocate diff strokes to the higher handicapper
     let na=ga, nb=gb;
-    if(diff>0){ // A higher hcp -> A gets strokes
-      na = ga - strokesOnHole(diff,siIn(round,hole),round.holes);
-    } else if(diff<0){
-      nb = gb - strokesOnHole(Math.abs(diff),siIn(round,hole),round.holes);
-    }
+    if(diff>0){ na = ga - strokesOnHole(diff,siIn(round,hole),round.holes); }
+    else if(diff<0){ nb = gb - strokesOnHole(Math.abs(diff),siIn(round,hole),round.holes); }
     if(na<nb) state++;
     else if(nb<na) state--;
     lastDecided++;
+    // closed out when lead > holes remaining
+    if(!decidedAt && Math.abs(state) > (h.length - lastDecided)) decidedAt=lastDecided;
   });
-  return {state,played:lastDecided,total:h.length};
+  const remaining=h.length-lastDecided;
+  const decided = Math.abs(state) > remaining; // match is over
+  return {state,played:lastDecided,total:h.length,decided,decidedAt,remaining};
 }
 
 // SKINS: each hole won outright (net) = 1 skin; ties carry over
@@ -1079,7 +1092,7 @@ function skinsResult(round){
 function teamMatchResult(round){
   const h=holesInPlay(round);
   const tA=round.teamA||[], tB=round.teamB||[];
-  let state=0;
+  let state=0, played=0, decidedAt=0;
   h.forEach(hole=>{
     const best=(team)=>{
       let b=Infinity,ok=false;
@@ -1092,8 +1105,12 @@ function teamMatchResult(round){
     const a=best(tA),b=best(tB);
     if(a==null||b==null) return;
     if(a<b) state++; else if(b<a) state--;
+    played++;
+    if(!decidedAt && Math.abs(state) > (h.length - played)) decidedAt=played;
   });
-  return {state,total:h.length};
+  const remaining=h.length-played;
+  const decided=Math.abs(state)>remaining;
+  return {state,total:h.length,played,decided,decidedAt,remaining};
 }
 
 function scoreClass(g,par){
@@ -1131,6 +1148,7 @@ function render(){
     else if(S.tab==="weather") v.appendChild(WeatherTab());
     app.appendChild(v);
     app.appendChild(Nav());
+    if(S.finishModal){ const fm=FinishModal(); if(fm)app.appendChild(fm); else S.finishModal=null; }
     if(S.tab==="gps") setTimeout(initMap,60);
     if(S.tab==="radar") setTimeout(initRadar,60);
   }catch(err){
@@ -1544,7 +1562,7 @@ function WeatherCard(){
   const advice=golfAdvice(today.kind, today.max, today.rain, today.wind);
 
   card.innerHTML=`<div class="row between"><div class="eyebrow">Course conditions</div>
-    <span class="mini muted refresh-wx" style="cursor:pointer">now · tap to refresh ↻</span></div>
+    <span class="mini muted refresh-wx" style="cursor:pointer">${WEATHER_TS?wxAgo():'now'} · refresh ↻</span></div>
     <div class="row" style="gap:14px;margin-top:8px;align-items:center">
       <span style="font-size:46px;line-height:1">${curEmoji}</span>
       <div style="flex:1">
@@ -1783,9 +1801,9 @@ function Dads(){
       </div></div>`;
     const edit=el("div","row","");edit.style.marginTop="12px";edit.style.gap="8px";
     const nameI=el("input");nameI.value=p.name;nameI.style.flex="2";
-    const hcpI=el("input");hcpI.type="number";hcpI.value=p.hcp;hcpI.style.flex="1";hcpI.min="-5";hcpI.max="54";
+    const hcpI=el("input");hcpI.type="number";hcpI.value=p.hcp;hcpI.style.flex="1";hcpI.min="-5";hcpI.max="54";hcpI.step="0.1";hcpI.placeholder="e.g. 14.6";
     nameI.oninput=e=>{p.name=e.target.value;};
-    hcpI.oninput=e=>{p.hcp=parseInt(e.target.value)||0;};
+    hcpI.oninput=e=>{const v=parseFloat(e.target.value);p.hcp=isNaN(v)?0:Math.round(v*10)/10;};
     nameI.onblur=()=>{cloudUpdatePlayer(p).catch(()=>{});save();};
     hcpI.onblur=()=>{cloudUpdatePlayer(p).catch(()=>{});save();};
     edit.appendChild(nameI);edit.appendChild(hcpI);
@@ -2104,6 +2122,27 @@ function Play(){
 
   // live match / skins status
   w.appendChild(liveStatus(r));
+
+  // match closed out? offer to end it (5&4 etc.)
+  if((r.format==="match"&&r.players.length===2)||r.format==="team"){
+    const res = r.format==="team"?teamMatchResult(r):matchPlayResult(r,r.players[0],r.players[1]);
+    if(res.decided){
+      let winName;
+      if(r.format==="team"){ const t=res.state>0?r.teamA:r.teamB; winName=t.map(id=>S.players.find(p=>p.id===id)?.name.split(' ')[0]).join(' & '); }
+      else { const w2=res.state>0?r.players[0]:r.players[1]; winName=S.players.find(p=>p.id===w2)?.name.split(' ')[0]; }
+      const margin=Math.abs(res.state), rem=res.remaining;
+      const closeBanner=el("div","card");
+      closeBanner.style.cssText="border:1px solid var(--lime);background:rgba(124,199,90,.12);margin-top:8px";
+      closeBanner.innerHTML=`<div class="serif" style="font-size:18px;font-weight:900;color:var(--lime)">🏆 Match over — ${winName} wins ${margin}&${rem}</div>
+        <div class="mini muted" style="margin-top:3px">The match can't be caught. Finish here, or play the remaining holes for fun.</div>`;
+      const endBtn=el("button","btn btn-gold","End match — ${winName} wins");
+      endBtn.textContent=`End match — ${winName} wins ${margin}&${rem}`;
+      endBtn.style.cssText="width:100%;margin-top:8px";
+      endBtn.onclick=()=>finishRound();
+      closeBanner.appendChild(endBtn);
+      w.appendChild(closeBanner);
+    }
+  }
 
   // nav buttons
   const navr=el("div","btn-row");navr.style.marginTop="6px";
@@ -2574,9 +2613,49 @@ function Scorecard(r){
   return wrap;
 }
 
+// how many holes have ALL players scored (a "complete" hole)
+function holesComplete(r){
+  const holes=holesInPlay(r);
+  return holes.filter(h=>r.players.every(pid=>r.scores?.[pid]?.[h.n]!=null)).length;
+}
+// holes where someone is missing a score, among holes that have been started
+function holesPartiallyScored(r){
+  const holes=holesInPlay(r);
+  return holes.filter(h=>{
+    const some=r.players.some(pid=>r.scores?.[pid]?.[h.n]!=null);
+    const all=r.players.every(pid=>r.scores?.[pid]?.[h.n]!=null);
+    return some && !all;
+  });
+}
+// is a match/team game already mathematically decided?
+function matchDecided(r){
+  if(r.format==="match" && r.players.length===2) return matchPlayResult(r,r.players[0],r.players[1]).decided;
+  if(r.format==="team") return teamMatchResult(r).decided;
+  return false;
+}
+
 // ---------- FINISH ----------
 async function finishRound(){
   const r=S.active;
+
+  // a match that's mathematically won can finish any time (5&4 etc.)
+  const decided=matchDecided(r);
+  const complete=holesComplete(r);
+
+  // minimum 5 complete holes — unless the match is already closed out
+  if(complete<5 && !decided){
+    toast(`Need at least 5 completed holes to finish (you have ${complete}).`);
+    return;
+  }
+  // warn about holes someone hasn't scored
+  const partial=holesPartiallyScored(r);
+  if(partial.length && !r._confirmFinish){
+    r._confirmFinish=true;
+    const nums=partial.map(h=>h.n).join(', ');
+    toast(`Hole ${nums} isn't scored for everyone — tap Finish again to end anyway.`);
+    render();
+    return;
+  }
   r.summary=computeSummary(r);
   r.report=generateReport(r);   // cheeky auto match report
   r.done=true;
@@ -2598,8 +2677,89 @@ async function finishRound(){
   S.openResult=r.cloudId||r.id;
   S.tab="home";   // latest result + comments now live on Home
   S.justFinished=r.id;
+  S.finishModal=r.cloudId||r.id;   // celebrate with a finish pop-up
+  // try to fetch a genuine AI report (when the function's deployed); falls back silently
+  fetchAiReport(r).then(ai=>{ if(ai){ r.report=ai; if(S.finishModal)render(); } }).catch(()=>{});
   render();
-  toast("Result in 🏁 the report's written…");
+  toast("Result in 🏁");
+}
+
+// Fetch a real AI match report from the Supabase Edge Function (deploy it tomorrow).
+// Returns null if not configured or unreachable — the built-in report stays as fallback.
+const AI_REPORT_URL=""; // <-- paste your functions URL here when deployed, e.g.
+                        // "https://ovurkxdikebjbgisvnpf.supabase.co/functions/v1/match-report"
+async function fetchAiReport(r){
+  if(!AI_REPORT_URL) return null;
+  try{
+    const prompt=buildReportPrompt(r);
+    const res=await fetch(AI_REPORT_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({prompt})});
+    const data=await res.json();
+    return (data && data.report) ? data.report : null;
+  }catch(e){ return null; }
+}
+
+// Build the prompt for the AI match report — the agreed spec.
+function buildReportPrompt(r){
+  const holes=holesInPlay(r);
+  const lines=[];
+  lines.push(`Format: ${fmtFormat(r.format)}, ${r.holes} holes at ${(COURSES[r.course]||{}).name||r.course}.`);
+  lines.push(`Result: ${r.summary?r.summary.text:""}.`);
+  r.players.forEach(pid=>{
+    const p=S.players.find(x=>x.id===pid); if(!p)return;
+    const ph=playingHcp(p,r);
+    const holeBits=holes.map(h=>{
+      const v=r.scores?.[pid]?.[h.n];
+      if(v==null)return null;
+      const rel=v-h.par;
+      const tag=rel<=-2?"eagle+":rel===-1?"birdie":rel===0?"par":rel===1?"bogey":rel===2?"double":"triple+";
+      return `hole ${h.n} (par ${h.par}, SI ${h.si}): ${v} [${tag}]`;
+    }).filter(Boolean);
+    const g=gross(r,p.id), n=netTotal(r,p.id);
+    const idx=(r.hcps&&r.hcps[pid]!=null)?r.hcps[pid]:p.hcp;
+    lines.push(`${p.name} (handicap index ${idx}, playing ${ph}): gross ${g}, net ${n}. ${holeBits.join("; ")}.`);
+  });
+  const spec=`Write a short, cheeky clubhouse match report (about 120-180 words). Refer to holes by NUMBER, never by name. Genuinely celebrate birdies and hard-won pars, giving extra credit on the hardest holes (low stroke index). Be properly savage about triple bogeys and worse, with extra mockery if it was on an easy hole (high stroke index). Use the stroke index to judge how hard or easy each hole was. ONLY occasionally, when there's a genuinely good story, mention how someone played relative to their handicap, recent head-to-head history, or their nemesis/favourite hole; don't force these in every time. Keep it fresh and mostly about the actual golf. Do not invent facts beyond the data given.`;
+  return spec+"\n\nROUND DATA:\n"+lines.join("\n");
+}
+
+// Celebratory finish pop-up: result, scorecard, and the match report (AI when configured)
+function FinishModal(){
+  const id=S.finishModal;
+  const r=S.rounds.find(x=>(x.cloudId||x.id)===id);
+  if(!r) return null;
+  const overlay=el("div","modaloverlay");
+  const card=el("div","modalcard");
+  const c=COURSES[r.course]||{short:"Course"};
+  // header
+  card.innerHTML=`<div style="text-align:center">
+      <div style="font-size:34px">🏁</div>
+      <div class="display" style="font-size:24px;color:var(--gold);margin-top:2px">Result's in</div>
+      <div class="serif" style="font-size:22px;color:var(--cream);font-weight:900;margin-top:6px;line-height:1.2">${r.summary?r.summary.text:"Round complete"} 🏆</div>
+      <div class="mini muted" style="margin-top:4px">${c.short} · ${r.holes} holes · ${fmtFormat(r.format)}</div>
+    </div>`;
+  // scorecard
+  const scWrap=el("div");scWrap.style.cssText="margin-top:14px";
+  scWrap.appendChild(Scorecard(r));
+  card.appendChild(scWrap);
+  // report
+  const rep=el("div","");rep.style.cssText="margin-top:14px;background:rgba(0,0,0,.22);border-radius:14px;padding:14px";
+  rep.innerHTML=`<div class="eyebrow" style="margin-bottom:6px">📰 The clubhouse report</div>
+    <div class="serif" style="font-style:italic;color:var(--cream);line-height:1.5;font-size:15px">${r.report||"…"}</div>`;
+  card.appendChild(rep);
+  // buttons
+  const btns=el("div","");btns.style.cssText="display:flex;gap:8px;margin-top:16px";
+  const comment=el("button","btn btn-ghost","💬 Comments");
+  comment.style.flex="1";
+  comment.onclick=()=>{S.finishModal=null;S.openResult=r.cloudId||r.id;S.tab="result";render();};
+  const done=el("button","btn btn-gold","Done");
+  done.style.flex="1";
+  done.onclick=()=>{S.finishModal=null;render();};
+  btns.appendChild(comment);btns.appendChild(done);
+  card.appendChild(btns);
+  // tap backdrop to dismiss
+  overlay.onclick=(e)=>{ if(e.target===overlay){S.finishModal=null;render();} };
+  overlay.appendChild(card);
+  return overlay;
 }
 
 async function abortRound(){
@@ -3184,7 +3344,7 @@ function Profile(){
 
     if(data.length>=2){
       tc.appendChild(el("div","mini muted",`${tv.metric==="gross"?"Gross":"Net"} scores · last ${data.length} completed ${tv.holes}-hole round${data.length!==1?'s':''}`));
-      tc.appendChild(sparkline(data));
+      tc.appendChild(sparkline(data, tv.metric==="gross"?"Gross":"Net"));
       const first=data[0].net,last=data[data.length-1].net;
       const better=last<first;
       tc.appendChild(el("div","mini muted",`<span style="color:${better?'var(--lime)':'var(--clay)'}">${better?'▼ trending lower (better)':'▲ trending higher'}</span> · best ${tv.metric} ${Math.min(...data.map(t=>t.net))}`));
@@ -3201,7 +3361,7 @@ function Profile(){
     hc.innerHTML=`<div class="row between"><div class="eyebrow">📉 Handicap history</div><div class="serif" style="font-weight:900;color:var(--gold);font-size:20px">${p.hcp}</div></div>`;
     if(hist.length>=2){
       // trend chart (reuse sparkline; lower = better, same as scores)
-      hc.appendChild(sparkline(hist.map(h=>({net:h.hcp,date:h.date}))));
+      hc.appendChild(sparkline(hist.map(h=>({net:h.hcp,date:h.date})), "Hcp"));
       const first=hist[0].hcp,last=hist[hist.length-1].hcp;
       const moved=last-first;
       const word = moved<0?`▼ down ${Math.abs(moved)} since you started tracking`:moved>0?`▲ up ${moved}`:"holding steady";
@@ -3445,8 +3605,9 @@ function breakdownRing(st){
 }
 
 // simple sparkline; lower is better so we don't invert
-function sparkline(data){
-  // data: array of {net, date}. Tap/hover a point to see its score & date.
+function sparkline(data, label){
+  // data: array of {net, date}. `label` (e.g. "Net","Gross","Hcp") describes the value.
+  label = label || "";
   const vals=data.map(d=>d.net);
   const wd=300,ht=90,pad=14;
   const min=Math.min(...vals),max=Math.max(...vals),rng=(max-min)||1;
@@ -3478,7 +3639,7 @@ function sparkline(data){
   const show=(i)=>{
     const d=data[i];
     const dt=new Date(d.date).toLocaleDateString('en-GB',{day:'numeric',month:'short'});
-    readout.textContent=`Net ${d.net} · ${dt}`;
+    readout.textContent=`${label?label+' ':''}${d.net} · ${dt}`;
     svgWrap.querySelectorAll('.spark-dot').forEach(c=>{
       const on=c.getAttribute('data-dot')==String(i);
       c.setAttribute('r',on?'5.5':'3');
