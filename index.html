@@ -2691,10 +2691,14 @@ async function fetchAiReport(r){
   if(!AI_REPORT_URL) return null;
   try{
     const prompt=buildReportPrompt(r);
-    const res=await fetch(AI_REPORT_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({prompt})});
+    const res=await fetch(AI_REPORT_URL,{method:"POST",headers:{
+      "Content-Type":"application/json",
+      "apikey":CLOUD.key,
+      "Authorization":"Bearer "+CLOUD.key
+    },body:JSON.stringify({prompt})});
     const data=await res.json();
     return (data && data.report) ? data.report : null;
-  }catch(e){ return null; }
+  }catch(e){ console.warn("AI report fetch failed",e); return null; }
 }
 
 // Build the prompt for the AI match report — the agreed spec.
