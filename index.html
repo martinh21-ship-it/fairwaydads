@@ -644,7 +644,7 @@ async function cloudCreateRound(r){
 }
 async function cloudUpdateRound(r){
   // store the match report inside the summary JSON so it persists (no extra DB column needed)
-  const summaryWithReport = r.summary ? Object.assign({}, r.summary, {_report:r.report||null}) : null;
+  const summaryWithReport = r.summary ? Object.assign({}, r.summary, {_report:r.report||null, _ai:r.aiReport||false}) : null;
   await cloudFetch("/rounds?id=eq."+r.cloudId,{method:"PATCH",
     body:JSON.stringify({scores:r.scores,tracking:{scorer:r.scorer||null,hcps:r.hcps||null},status:r.done?"done":"live",
       summary:summaryWithReport})});
@@ -776,7 +776,7 @@ function roundFromCloud(row){
     scorer:(row.tracking&&row.tracking.scorer)||null,
     hcps:(row.tracking&&row.tracking.hcps)||null,
     scores:row.scores||{}, current:0,
-    done:row.status==="done", summary:row.summary||null, report:(row.summary&&row.summary._report)||null, banter:[],
+    done:row.status==="done", summary:row.summary||null, report:(row.summary&&row.summary._report)||null, aiReport:(row.summary&&row.summary._ai)||false, banter:[],
     _updated:row.updated_at
   };
 }
@@ -2657,12 +2657,26 @@ async function finishRound(){
     return;
   }
   r.summary=computeSummary(r);
-  r.report=generateReport(r);   // cheeky auto match report
+  r.report=generateReport(r);   // built-in report shows instantly as a fallback
   r.done=true;
-  // push final state to cloud
+  S.rounds.unshift(r);
+  S.active=null;
+  S.openResult=r.cloudId||r.id;
+  S.tab="home";
+  S.justFinished=r.id;
+  S.finishModal=r.cloudId||r.id;
+  render();
+  toast("Result in 🏁");
+
+  // Try the AI report. If it arrives, REPLACE the report everywhere — in memory,
+  // in the cloud (so the saved version is the AI one), and re-render the pop-up.
+  let aiReport=null;
+  try{ aiReport=await fetchAiReport(r); }catch(e){}
+  if(aiReport){ r.report=aiReport; r.aiReport=true; }
+
+  // push final state to cloud (with the AI report if we got one)
   if(r.cloudId){
     try{ await cloudUpdateRound(r); }catch(e){ console.warn("finish push failed",e); }
-    // post the match report as the opening auto-comment in the thread
     try{
       await autoPost("📰 "+r.report, r.cloudId);
       const hl=roundHighlights(r);
@@ -2672,16 +2686,8 @@ async function finishRound(){
       }
     }catch(e){}
   }
-  S.rounds.unshift(r);
-  S.active=null;
-  S.openResult=r.cloudId||r.id;
-  S.tab="home";   // latest result + comments now live on Home
-  S.justFinished=r.id;
-  S.finishModal=r.cloudId||r.id;   // celebrate with a finish pop-up
-  // try to fetch a genuine AI report (when the function's deployed); falls back silently
-  fetchAiReport(r).then(ai=>{ if(ai){ r.report=ai; if(S.finishModal)render(); } }).catch(()=>{});
-  render();
-  toast("Result in 🏁");
+  // refresh the pop-up so it shows the AI report (if it's still open)
+  if(S.finishModal) render();
 }
 
 // Fetch a real AI match report from the Supabase Edge Function (Groq-backed).
@@ -2746,7 +2752,7 @@ function FinishModal(){
   card.appendChild(scWrap);
   // report
   const rep=el("div","");rep.style.cssText="margin-top:14px;background:rgba(0,0,0,.22);border-radius:14px;padding:14px";
-  rep.innerHTML=`<div class="eyebrow" style="margin-bottom:6px">📰 The clubhouse report</div>
+  rep.innerHTML=`<div class="eyebrow" style="margin-bottom:6px">📰 The clubhouse report${r.aiReport?' <span style="color:var(--gold)">✨ AI</span>':''}</div>
     <div class="serif" style="font-style:italic;color:var(--cream);line-height:1.5;font-size:15px">${r.report||"…"}</div>`;
   card.appendChild(rep);
   // buttons
