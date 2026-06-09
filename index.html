@@ -2684,10 +2684,9 @@ async function finishRound(){
   toast("Result in 🏁");
 }
 
-// Fetch a real AI match report from the Supabase Edge Function (deploy it tomorrow).
-// Returns null if not configured or unreachable — the built-in report stays as fallback.
-const AI_REPORT_URL=""; // <-- paste your functions URL here when deployed, e.g.
-                        // "https://ovurkxdikebjbgisvnpf.supabase.co/functions/v1/match-report"
+// Fetch a real AI match report from the Supabase Edge Function (Groq-backed).
+// Returns null if unreachable — the built-in report stays as a safe fallback.
+const AI_REPORT_URL="https://ovurkxdikebjbgisvnpf.supabase.co/functions/v1/match-report";
 async function fetchAiReport(r){
   if(!AI_REPORT_URL) return null;
   try{
