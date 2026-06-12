@@ -14,23 +14,24 @@
 <title>Tee Escape</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,900;1,9..144,500&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,900;1,9..144,500&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
 :root{
-  /* Tee Escape — deep forest green, brass/gold, cream */
-  --green-900:#0a1410; --green-800:#0e1c15; --green-700:#13271c;
-  --green-600:#1a3525; --green-500:#26492f; --green-400:#3c6b43;
-  /* gold is now the hero accent (was lime) */
-  --gold:#d9a94e; --gold-bright:#e8c06a; --gold-dim:#b08838;
-  --cream:#f3ede0; --cream-dim:#bdb6a4;
-  --clay:#c2643c; --sky:#8bb6a6;
-  /* keep --lime as an alias to gold so existing references restyle automatically */
-  --lime:#d9a94e; --lime-dim:#b08838;
-  --ink:#0a1410; --paper:#f3ede0;
-  --shadow:0 14px 44px -14px rgba(0,0,0,.7);
-  --r:16px;
+  /* Tee Escape — deep forest, brass gold that glints, cream */
+  --green-900:#070f0b; --green-800:#0b1812; --green-700:#102a1d;
+  --green-600:#163826; --green-500:#1f4a30; --green-400:#3f7a4d;
+  /* gold hero accent — brighter, warmer, glints */
+  --gold:#e6b855; --gold-bright:#f5d488; --gold-dim:#b89a55;
+  --cream:#f4efe3; --cream-dim:#a8b4ab;
+  --clay:#cf6a3e; --sky:#8bb6a6;
+  /* keep --lime aliased to gold so legacy references restyle automatically */
+  --lime:#e6b855; --lime-dim:#b89a55;
+  --ink:#070f0b; --paper:#f4efe3;
+  --shadow:0 16px 48px -16px rgba(0,0,0,.78);
+  --r:18px;
+  --goldgrad:linear-gradient(135deg,var(--gold-bright),var(--gold));
 }
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{height:100%}
@@ -46,10 +47,11 @@ body{
   background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
 
 /* Typography */
-.display{font-family:'Oswald',sans-serif;font-weight:700;letter-spacing:.01em;line-height:.98;text-transform:uppercase}
+.display{font-family:'Fraunces',serif;font-weight:900;letter-spacing:-.01em;line-height:.96}
 .serif{font-family:'Fraunces',serif}
-.cond{font-family:'Oswald',sans-serif;text-transform:uppercase;letter-spacing:.04em}
-h1,h2,h3{font-family:'Oswald',sans-serif;font-weight:600;letter-spacing:.02em}
+.goldtext{background:var(--goldgrad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.cond{font-family:'Fraunces',serif;font-weight:600;letter-spacing:.01em}
+h1,h2,h3{font-family:'Fraunces',serif;font-weight:600;letter-spacing:0}
 
 /* Header */
 .topbar{position:sticky;top:0;z-index:50;padding:16px 18px 14px;
@@ -58,7 +60,7 @@ h1,h2,h3{font-family:'Oswald',sans-serif;font-weight:600;letter-spacing:.02em}
   padding-top:calc(16px + env(safe-area-inset-top))}
 .brand{display:flex;align-items:center;gap:11px}
 .brand .flag{width:34px;height:34px;flex:none}
-.brand h1{font-size:23px;color:var(--cream);font-family:'Oswald',sans-serif;font-weight:700;text-transform:uppercase;letter-spacing:.06em;line-height:1}
+.brand h1{font-size:24px;color:var(--cream);font-family:'Fraunces',serif;font-weight:900;letter-spacing:-.01em;line-height:1}
 .brand h1 span{color:var(--gold)}
 .brand-sub{font-size:9px;letter-spacing:.28em;text-transform:uppercase;color:var(--gold-dim);font-weight:600;margin-top:2px}
 
@@ -76,9 +78,9 @@ h1,h2,h3{font-family:'Oswald',sans-serif;font-weight:600;letter-spacing:.02em}
   padding:15px 18px;width:100%;cursor:pointer;transition:transform .12s, filter .2s;
   display:flex;align-items:center;justify-content:center;gap:9px}
 .btn:active{transform:scale(.97)}
-.btn-primary{background:linear-gradient(135deg,var(--gold-bright),var(--gold-dim));color:var(--green-900)}
+.btn-primary{background:var(--goldgrad);color:#2a1c06;box-shadow:0 6px 18px -6px rgba(230,184,85,.45)}
 .btn-ghost{background:rgba(255,255,255,.06);color:var(--cream);border:1px solid rgba(255,255,255,.12)}
-.btn-gold{background:linear-gradient(135deg,var(--gold),#c99a32);color:var(--green-900)}
+.btn-gold{background:var(--goldgrad);color:#2a1c06;box-shadow:0 6px 18px -6px rgba(230,184,85,.45)}
 .btn-sm{padding:10px 14px;font-size:14px;width:auto;border-radius:11px}
 .btn-row{display:flex;gap:10px}
 
@@ -91,8 +93,8 @@ label{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--c
 .field{margin-bottom:13px}
 
 /* Section label */
-.eyebrow{font-family:'Oswald',sans-serif;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--gold-dim);font-weight:600;margin-bottom:4px}
-.bigtitle{font-family:'Oswald',sans-serif;font-weight:700;text-transform:uppercase;letter-spacing:.02em;font-size:32px;color:var(--cream);margin-bottom:14px;line-height:1}
+.eyebrow{font-family:'Outfit',sans-serif;font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--gold-dim);font-weight:600;margin-bottom:5px}
+.bigtitle{font-family:'Fraunces',serif;font-weight:900;letter-spacing:-.01em;font-size:34px;color:var(--cream);margin-bottom:14px;line-height:.98}
 .bigtitle em{font-style:normal;color:var(--gold)}
 
 /* Bottom nav */
@@ -529,6 +531,21 @@ function pushWindow(arr,run,minHours){
     const code=+Object.keys(cc).sort((a,b)=>cc[b]-cc[a])[0];
     arr.push({start:run.start,end:run.end,hours:hrs,temp:avgT,code});
   }
+}
+// Date key (YYYY-MM-DD) in *local* time — prefers the weather API's own course-local
+// clock; never uses toISOString(), which is UTC and goes wrong an hour either side
+// of midnight during British Summer Time.
+function localDateKey(offsetDays){
+  offsetDays=offsetDays||0;
+  const p=n=>String(n).padStart(2,'0');
+  let base;
+  if(WEATHER && WEATHER.current && WEATHER.current.time){
+    base=new Date(WEATHER.current.time.slice(0,10)+"T12:00:00"); // noon avoids DST edges
+  } else {
+    base=new Date();
+  }
+  base.setDate(base.getDate()+offsetDays);
+  return base.getFullYear()+'-'+p(base.getMonth()+1)+'-'+p(base.getDate());
 }
 function wxAgo(){
   const mins=Math.round((Date.now()-WEATHER_TS)/60000);
@@ -1142,7 +1159,7 @@ function scoreClass(g,par){
 // =================== RENDER ===================
 function render(){
   persist();
-  if(S.tab!=="gps") S.placingBend=false;
+  if(S.tab!=="gps"){S.placingBend=false;S.holeSetup=false;}
   const app=$("#app");
   try{
     app.innerHTML="";
@@ -1350,7 +1367,7 @@ function Home(){
   hero.style.background="linear-gradient(150deg, var(--green-600), var(--green-700))";
   const me=S.players.find(p=>p.id===S.meId);
   hero.innerHTML=`<div class="eyebrow">${greeting()}${me?', '+me.name.split(' ')[0]:''}</div>
-    <div class="display" style="font-size:34px;color:var(--cream);margin:4px 0 10px">Time to<br><span style="color:var(--gold)">escape?</span></div>
+    <div class="display" style="font-size:34px;color:var(--cream);margin:4px 0 10px">Time to<br><span class="goldtext">escape?</span></div>
     <div class="muted mini">${S.players.length} dad${S.players.length!==1?"s":""} in the club · ${S.rounds.length} round${S.rounds.length!==1?"s":""} logged</div>
     <div class="serif" style="font-style:italic;color:var(--gold);font-size:14px;margin-top:10px;opacity:.85">Golf &gt; Kids. Don't tell them.</div>`;
   w.appendChild(hero);
@@ -1599,59 +1616,20 @@ function WeatherCard(){
   adv.innerHTML=`<div class="serif" style="font-style:italic;color:var(--gold);font-size:15px">“${advice}”</div>`;
   card.appendChild(adv);
 
-  // next 6 hours — icon, temp, rain %, mm per hour; horizontally scrollable
-  if(WEATHER.hourly && WEATHER.hourly.time){
-    const H=WEATHER.hourly;
-    const nowLocal = (WEATHER.current && WEATHER.current.time) ? WEATHER.current.time
-                    : new Date().toISOString().slice(0,13);
-    const nowHour = nowLocal.slice(0,13);
-    let startIdx = H.time.findIndex(ts => ts.slice(0,13) >= nowHour);
-    if(startIdx < 0) startIdx = 0;
-    const upcoming=[];
-    for(let i=startIdx; i<H.time.length && upcoming.length<6; i++){
-      upcoming.push({
-        ts:H.time[i],
-        prob: H.precipitation_probability?.[i],
-        mm: H.precipitation?.[i],
-        code: H.weather_code?.[i],
-        temp: H.temperature_2m?.[i]
-      });
-    }
-    if(upcoming.length){
-      const hr=el("div","");hr.style.cssText="margin-top:12px";
-      hr.innerHTML=`<div class="mini muted" style="font-weight:700;text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px">Next 6 hours</div>`;
-      const row=el("div","");row.style.cssText="display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch";
-      upcoming.forEach(h=>{
-        const [lbl,emo]=wmoFor(h.code, isNightAt(h.ts), h.ts.slice(0,10));
-        const hh=parseInt(h.ts.slice(11,13),10);
-        const time=(hh%12||12)+(hh<12?'am':'pm');
-        const mm=(h.mm!=null)?(Math.round(h.mm*10)/10):0;
-        const wet=(h.prob||0)>=40 || mm>0.1;
-        const box=el("div","");box.style.cssText=`flex:0 0 auto;width:66px;background:rgba(0,0,0,.22);border-radius:12px;padding:10px 6px;text-align:center;${wet?'border:1px solid rgba(127,195,214,.4)':'border:1px solid transparent'}`;
-        box.innerHTML=`<div class="mini muted" style="font-weight:700;font-size:11px">${time}</div>
-          <div style="font-size:22px;margin:3px 0">${emo}</div>
-          <div class="serif" style="font-weight:900;color:var(--cream);font-size:15px">${h.temp!=null?Math.round(h.temp)+'°':'–'}</div>
-          <div class="mini" style="margin-top:3px;color:${wet?'var(--sky)':'var(--cream-dim)'};font-weight:700;font-size:11px">${h.prob==null?'–':h.prob+'%'}</div>
-          <div class="mini muted" style="font-size:10px">${mm} mm</div>`;
-        row.appendChild(box);
-      });
-      hr.appendChild(row);
-
-      // sunrise / sunset line — show whichever is relevant (next one coming up, plus today's pair)
-      const sr=(WEATHER.daily&&WEATHER.daily.sunrise)||[];
-      const ss=(WEATHER.daily&&WEATHER.daily.sunset)||[];
-      const fmtT=(iso)=>{ if(!iso)return null; const hh=parseInt(iso.slice(11,13),10),mn=iso.slice(14,16); return (hh%12||12)+':'+mn+(hh<12?'am':'pm'); };
-      const today=new Date().toISOString().slice(0,10);
-      const srToday=sr.find(s=>s.slice(0,10)===today), ssToday=ss.find(s=>s.slice(0,10)===today);
-      if(srToday||ssToday){
-        const line=el("div","mini muted");line.style.cssText="margin-top:8px;text-align:center";
-        const parts=[];
-        if(srToday)parts.push(`🌅 Sunrise ${fmtT(srToday)}`);
-        if(ssToday)parts.push(`🌇 Sunset ${fmtT(ssToday)}`);
-        line.innerHTML=parts.join(' · ');
-        hr.appendChild(line);
-      }
-      card.appendChild(hr);
+  // sunrise / sunset line (hour-by-hour detail lives in the Windows strip below — no duplicate)
+  if(WEATHER.daily && (WEATHER.daily.sunrise||WEATHER.daily.sunset)){
+    const sr=(WEATHER.daily&&WEATHER.daily.sunrise)||[];
+    const ss=(WEATHER.daily&&WEATHER.daily.sunset)||[];
+    const fmtT=(iso)=>{ if(!iso)return null; const hh=parseInt(iso.slice(11,13),10),mn=iso.slice(14,16); return (hh%12||12)+':'+mn+(hh<12?'am':'pm'); };
+    const today=localDateKey(0);
+    const srToday=sr.find(s=>s.slice(0,10)===today), ssToday=ss.find(s=>s.slice(0,10)===today);
+    if(srToday||ssToday){
+      const line=el("div","mini muted");line.style.cssText="margin-top:10px;text-align:center";
+      const parts=[];
+      if(srToday)parts.push(`🌅 Sunrise ${fmtT(srToday)}`);
+      if(ssToday)parts.push(`🌇 Sunset ${fmtT(ssToday)}`);
+      line.innerHTML=parts.join(' · ');
+      card.appendChild(line);
     }
   }
 
@@ -1686,7 +1664,7 @@ function daylightHours(dateKey){
   const CLUB_OPEN=7; // course opens at 7am regardless of how early the sun is up
   const srH = Math.max(CLUB_OPEN, sr?parseInt(sr.slice(11,13),10):7);
   const ssH = ss?parseInt(ss.slice(11,13),10):21; // closes at sundown
-  const nowStr = (W.current&&W.current.time)?W.current.time.slice(0,13):new Date().toISOString().slice(0,13);
+  const nowStr = (W.current&&W.current.time)?W.current.time.slice(0,13):(localDateKey(0)+"T"+String(new Date().getHours()).padStart(2,'0'));
   const hours=[];
   for(let i=0;i<H.time.length;i++){
     const ts=H.time[i];
@@ -1718,9 +1696,8 @@ function EscapeWindows(){
   card.innerHTML=`<div class="eyebrow">🍃 Windows of opportunity</div>
     <div class="mini muted" style="margin-bottom:4px">Daylight hours · highlighted = 2+ hours dry & under 30% rain</div>`;
 
-  const todayKey=new Date().toISOString().slice(0,10);
-  const tomDate=new Date();tomDate.setDate(tomDate.getDate()+1);
-  const tomKey=tomDate.toISOString().slice(0,10);
+  const todayKey=localDateKey(0);
+  const tomKey=localDateKey(1);
 
   let anyWindow=false;
   [["Today",todayKey],["Tomorrow",tomKey]].forEach(([lbl,key])=>{
@@ -1781,40 +1758,32 @@ function Dads(){
   const w=el("div");
   w.appendChild(el("div","",`<div class="eyebrow">The crew</div><div class="bigtitle">The <em>Dads</em></div>`));
 
-  // group code banner
-  if(S.cloud){
-    const gc=el("div","card");gc.style.background="rgba(200,240,74,.08)";gc.style.borderColor="rgba(200,240,74,.25)";
-    gc.innerHTML=`<div class="row between"><div><div class="eyebrow">Group code</div>
-      <div class="serif" style="font-size:24px;color:var(--lime);letter-spacing:.05em">${S.cloud.code}</div></div></div>`;
-    const share=el("button","btn btn-ghost btn-sm","📤 Share code with the dads");share.style.cssText="width:100%;margin-top:10px";
-    share.onclick=()=>{
-      const msg=`Join our golf group "${S.cloud.name}" on Tee Escape — use code ${S.cloud.code}`;
-      if(navigator.share)navigator.share({text:msg}).catch(()=>{});
-      else{navigator.clipboard?.writeText(msg);toast("Copied — paste into the group chat");}
-    };
-    gc.appendChild(share);
-    w.appendChild(gc);
-  }
-
-  // identity: who am I on this phone?
-  if(S.players.length){
-    const idc=el("div","card");
+  // first-run only: pick who you are (once set, this lives in the Group card below)
+  if(S.players.length && !S.meId){
+    const idc=el("div","card");idc.style.borderColor="rgba(200,240,74,.35)";
     idc.innerHTML=`<label>I am…</label>`;
     const wrap=el("div","chips");
     S.players.forEach(p=>{
-      const ch=el("div","chip"+(S.meId===p.id?" on":""),p.name.split(' ')[0]);
+      const ch=el("div","chip",p.name.split(' ')[0]);
       ch.onclick=()=>{S.meId=p.id;save();toast("You're set as "+p.name.split(' ')[0]);};
       wrap.appendChild(ch);
     });
     idc.appendChild(wrap);
-    idc.appendChild(el("div","mini muted","Pick yourself so the app knows whose phone this is. Each dad does this once on their own phone."));
+    idc.appendChild(el("div","mini muted","Pick yourself so the app knows whose phone this is — once, on your own phone."));
     w.appendChild(idc);
   }
 
-  S.players.forEach(p=>{
+  // compute standings ONCE (it recomputes every round's summary), and sort the
+  // roster like a living leaderboard: wins, then rounds played, then name
+  const allStandings=seasonStandings();
+  const winsOf=id=>{const s=allStandings.find(x=>x.id===id);return s?s.wins:0;};
+  const roster=[...S.players].sort((a,b)=>
+    winsOf(b.id)-winsOf(a.id) ||
+    playerStats(b.id).rounds-playerStats(a.id).rounds ||
+    a.name.localeCompare(b.name));
+  roster.forEach(p=>{
     const st=playerStats(p.id);
-    const standing=seasonStandings().find(s=>s.id===p.id);
-    const wins=standing?standing.wins:0;
+    const wins=winsOf(p.id);
     // best completed net round (any length), for the roster tile
     let bestNet=null;
     allRounds().filter(r=>r.players.includes(p.id)).forEach(r=>{
@@ -1827,12 +1796,12 @@ function Dads(){
     c.style.cssText="position:relative;padding:0;overflow:hidden;cursor:pointer";
     const photoBlock = p.photo
       ? `<img src="${p.photo}" alt="${p.name}" style="width:100%;height:150px;object-fit:cover;display:block" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"/>
-         <div style="display:none;width:100%;height:150px;background:${p.color};align-items:center;justify-content:center;font-size:54px;font-weight:900;color:#fff;font-family:'Oswald'">${initials(p.name)}</div>`
-      : `<div style="width:100%;height:150px;background:linear-gradient(150deg, ${p.color}, var(--green-700));display:flex;align-items:center;justify-content:center;font-size:60px;font-weight:900;color:#fff;font-family:'Oswald'">${initials(p.name)}</div>`;
+         <div style="display:none;width:100%;height:150px;background:${p.color};align-items:center;justify-content:center;font-size:54px;font-weight:900;color:#fff;font-family:'Fraunces',serif">${initials(p.name)}</div>`
+      : `<div style="width:100%;height:150px;background:linear-gradient(150deg, ${p.color}, var(--green-700));display:flex;align-items:center;justify-content:center;font-size:60px;font-weight:900;color:#fff;font-family:'Fraunces',serif">${initials(p.name)}</div>`;
     c.innerHTML=`
       <div style="position:relative">
         ${photoBlock}
-        <div style="position:absolute;inset:0;background:linear-gradient(180deg, rgba(10,20,16,0) 40%, rgba(10,20,16,.9) 100%)"></div>
+        <div style="position:absolute;inset:0;background:linear-gradient(180deg, rgba(7,15,11,0) 40%, rgba(7,15,11,.9) 100%)"></div>
         <div style="position:absolute;left:14px;right:14px;bottom:10px">
           <div class="display" style="font-size:22px;color:var(--cream);text-shadow:0 2px 10px rgba(0,0,0,.8);line-height:1">${p.name}${S.meId===p.id?' <span class="mini" style="color:var(--lime)">· you</span>':''}</div>
           <div class="mini" style="color:var(--gold);font-weight:600;text-shadow:0 1px 5px rgba(0,0,0,.9)">HANDICAP ${p.hcp}</div>
@@ -1844,13 +1813,23 @@ function Dads(){
             <div class="serif" style="font-size:19px;font-weight:900;color:var(--cream)">${v}</div>
             <div class="mini muted" style="font-size:8px;letter-spacing:.08em;text-transform:uppercase">${l}</div>
           </div>`).join('')}
-      </div>
-      <div class="mini muted" style="text-align:center;padding:8px">Tap for stats & profile ›</div>`;
+      </div>`;
     c.onclick=()=>{S.profileId=p.id;S.editProfile=false;S.tab="profile";render();};
     w.appendChild(c);
   });
 
-  const add=el("button","btn btn-primary","＋ Add a dad");
+  // one compact Group card: code + share + who-am-I + add a dad
+  const grp=el("div","card");
+  grp.innerHTML=`<div class="row between" style="align-items:center"><div><div class="eyebrow">Group</div>
+    <div class="serif" style="font-size:20px;color:var(--lime);letter-spacing:.05em">${S.cloud?S.cloud.code:''}</div></div></div>`;
+  const grow=el("div","row");grow.style.cssText="gap:8px;margin-top:10px";
+  const share=el("button","btn btn-ghost btn-sm","📤 Share code");share.style.flex="1";
+  share.onclick=()=>{
+    const msg=`Join our golf group "${S.cloud.name}" on Tee Escape — use code ${S.cloud.code}`;
+    if(navigator.share)navigator.share({text:msg}).catch(()=>{});
+    else{navigator.clipboard?.writeText(msg);toast("Copied — paste into the group chat");}
+  };
+  const add=el("button","btn btn-ghost btn-sm","＋ Add a dad");add.style.flex="1";
   add.onclick=async()=>{
     const used=S.players.map(p=>p.color);
     const col=AVATAR_COLORS.find(c=>!used.includes(c))||AVATAR_COLORS[S.players.length%AVATAR_COLORS.length];
@@ -1861,8 +1840,16 @@ function Dads(){
       save();
     }catch(e){toast("Couldn't add — check connection");}
   };
-  w.appendChild(add);
-  w.appendChild(el("div","card mini muted center",`Add every dad here once — they sync to everyone. Handicaps drive every net score, match-play stroke and skin. 👀`));
+  grow.appendChild(share);grow.appendChild(add);
+  grp.appendChild(grow);
+  if(S.meId && S.players.length){
+    const me=S.players.find(p=>p.id===S.meId);
+    const idLine=el("div","mini muted");idLine.style.cssText="margin-top:10px";
+    idLine.innerHTML=`This phone is <b style="color:var(--cream)">${me?me.name.split(' ')[0]:'?'}</b> · <span style="color:var(--gold);cursor:pointer" id="chgme">change</span>`;
+    grp.appendChild(idLine);
+    setTimeout(()=>{const e=document.getElementById("chgme");if(e)e.onclick=()=>{S.meId=null;render();};},0);
+  }
+  w.appendChild(grp);
   return w;
 }
 
@@ -1883,7 +1870,7 @@ function SetupRound(){
     banner.style.cssText=`position:relative;height:96px;border-radius:14px;overflow:hidden;margin-bottom:10px;cursor:pointer;border:2px solid ${sel?'var(--gold)':'transparent'};box-shadow:${sel?'0 0 0 3px rgba(217,169,78,.25)':'none'};transition:.15s`;
     banner.innerHTML=`
       <img src="${c.photo}" alt="${c.name}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover" onerror="this.style.display='none'"/>
-      <div style="position:absolute;inset:0;background:linear-gradient(90deg, rgba(10,20,16,.85) 0%, rgba(10,20,16,.35) 60%, rgba(10,20,16,.15) 100%)"></div>
+      <div style="position:absolute;inset:0;background:linear-gradient(90deg, rgba(7,15,11,.85) 0%, rgba(7,15,11,.35) 60%, rgba(7,15,11,.15) 100%)"></div>
       <div style="position:absolute;left:14px;top:0;bottom:0;display:flex;flex-direction:column;justify-content:center">
         <div class="display" style="font-size:22px;color:var(--cream);line-height:1">${c.short}</div>
         <div class="mini" style="color:var(--cream-dim);margin-top:3px">Par ${c.par} · ${c.holes.length} holes</div>
@@ -2042,7 +2029,7 @@ function Play(){
     hc.innerHTML=`
       <img src="${photoUrl}" alt="${hole.name}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover"
         onerror="this.style.display='none';this.parentElement.querySelector('.fallback').style.display='block'"/>
-      <div style="position:absolute;inset:0;background:linear-gradient(180deg, rgba(10,20,16,.55) 0%, rgba(10,20,16,.15) 45%, rgba(10,20,16,.8) 100%)"></div>
+      <div style="position:absolute;inset:0;background:linear-gradient(180deg, rgba(7,15,11,.55) 0%, rgba(7,15,11,.15) 45%, rgba(7,15,11,.8) 100%)"></div>
       <div class="fallback" style="display:none;position:absolute;inset:0;background:var(--green-700)"></div>
       <div style="position:relative;padding:16px;min-height:170px;display:flex;flex-direction:column;justify-content:space-between">
         <div style="display:flex;align-items:flex-start;gap:10px">
@@ -2753,7 +2740,7 @@ function FinishModal(){
   // header
   card.innerHTML=`<div style="text-align:center">
       <div style="font-size:34px">🏁</div>
-      <div class="display" style="font-size:24px;color:var(--gold);margin-top:2px">Result's in</div>
+      <div class="display goldtext" style="font-size:24px;margin-top:2px">Result's in</div>
       <div class="serif" style="font-size:22px;color:var(--cream);font-weight:900;margin-top:6px;line-height:1.2">${r.summary?r.summary.text:"Round complete"} 🏆</div>
       <div class="mini muted" style="margin-top:4px">${c.short} · ${r.holes} holes · ${fmtFormat(r.format)}</div>
     </div>`;
@@ -3057,8 +3044,9 @@ function BoardRounds(){
     const btns=el("div","row");btns.style.cssText="gap:8px;margin-top:8px";
     // report toggle
     if(r.report){
-      const repBtn=el("button","btn btn-ghost btn-sm","📰 Report");
+      const repBtn=el("button","btn btn-ghost btn-sm",r.aiReport?"📰 Report ✨":"📰 Report");
       const repw=el("div","hidden");repw.style.marginTop="10px";
+      if(r.aiReport)repw.appendChild(el("div","mini",`<span style="color:var(--gold)">✨ AI clubhouse report</span>`));
       repw.appendChild(el("div","banter",`"${r.report}"`));
       repBtn.onclick=()=>{repw.classList.toggle("hidden");};
       btns.appendChild(repBtn);
@@ -3276,12 +3264,12 @@ function Profile(){
   head.style.cssText="position:relative;padding:0;overflow:hidden";
   const photoBlock = p.photo
     ? `<img src="${p.photo}" alt="${p.name}" style="width:100%;height:240px;object-fit:cover;display:block" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"/>
-       <div style="display:none;width:100%;height:240px;background:${p.color};align-items:center;justify-content:center;font-size:80px;font-weight:900;color:#fff;font-family:'Oswald'">${initials(p.name)}</div>`
-    : `<div style="width:100%;height:240px;background:linear-gradient(150deg, ${p.color}, var(--green-700));display:flex;align-items:center;justify-content:center;font-size:90px;font-weight:900;color:#fff;font-family:'Oswald'">${initials(p.name)}</div>`;
+       <div style="display:none;width:100%;height:240px;background:${p.color};align-items:center;justify-content:center;font-size:80px;font-weight:900;color:#fff;font-family:'Fraunces',serif">${initials(p.name)}</div>`
+    : `<div style="width:100%;height:240px;background:linear-gradient(150deg, ${p.color}, var(--green-700));display:flex;align-items:center;justify-content:center;font-size:90px;font-weight:900;color:#fff;font-family:'Fraunces',serif">${initials(p.name)}</div>`;
   head.innerHTML=`
     <div style="position:relative">
       ${photoBlock}
-      <div style="position:absolute;inset:0;background:linear-gradient(180deg, rgba(10,20,16,0) 45%, rgba(10,20,16,.92) 100%)"></div>
+      <div style="position:absolute;inset:0;background:linear-gradient(180deg, rgba(7,15,11,0) 45%, rgba(7,15,11,.92) 100%)"></div>
       <div style="position:absolute;left:16px;right:16px;bottom:14px">
         <div class="display" style="font-size:32px;color:var(--cream);text-shadow:0 2px 12px rgba(0,0,0,.8);line-height:1">${p.name}</div>
         <div class="cond" style="color:var(--gold);font-size:13px;font-weight:600;margin-top:3px;text-shadow:0 1px 6px rgba(0,0,0,.9)">HANDICAP ${p.hcp}</div>
@@ -3752,7 +3740,7 @@ function GPSView(){
   const sel=el("div","scroll-x");
   c.holes.forEach(h=>{
     const ch=el("div","chip"+(h.n===hole.n?" on":""),String(h.n));
-    ch.onclick=()=>{S.gpsHole=h.n;render();};
+    ch.onclick=()=>{S.gpsHole=h.n;S.placingBend=false;S.holeSetup=false;render();};
     sel.appendChild(ch);
   });
   w.appendChild(sel);
@@ -3810,58 +3798,75 @@ function GPSView(){
 
   // pin status + single-tap capture
   const pinCard=el("div","card");
-  if(hole.approx){
+  const configured = hole.green && !hole.approx;
+
+  if(!configured){
+    // FIRST-RUN: prominent setup flow (only state where instructions earn their space)
     pinCard.style.borderColor="rgba(232,184,75,.35)";
     pinCard.innerHTML=`<div class="row between" style="margin-bottom:10px"><span class="eyebrow" style="color:var(--gold)">⚠ Green not set yet</span><span class="mini muted">approx</span></div>
-      <div class="mini muted" style="margin-bottom:12px">Stand on or beside this green and tap once. It saves the location for the <b>whole group</b> — any dad only has to do each green once, ever.</div>`;
-  } else {
-    pinCard.style.borderColor="rgba(52,163,90,.4)";
-    pinCard.innerHTML=`<div class="row between" style="margin-bottom:10px"><span class="eyebrow" style="color:var(--green-400)">✓ Green set</span><span class="mini muted">accurate</span></div>
-      <div class="mini muted" style="margin-bottom:12px">Yardages for this hole are locked in for everyone. Standing on the green again will update it.</div>`;
-  }
-  const setpin=el("button","btn btn-gold",hole.approx?"🎯 Tap here to set this green":"↻ Re-set this green");
-  setpin.onclick=()=>setPinHere(hole);
-  pinCard.appendChild(setpin);
-
-  // set the tee box too — pairs with the green
-  const setTee=el("button","btn btn-ghost",hole.tee?"↻ Re-set the tee":"⛳ Set the tee box (stand on it)");
-  setTee.style.marginTop="8px";
-  setTee.onclick=()=>setTeeHere(hole);
-  pinCard.appendChild(setTee);
-
-  // set a dogleg/bend point — only meaningful once tee & green exist
-  if(hole.tee && hole.green && !hole.approx){
-    const setBend=el("button",S.placingBend?"btn btn-gold":"btn btn-ghost",
-      S.placingBend?"👆 Now tap the corner on the map":(hole.bend?"↻ Move the dogleg point":"📐 Set the dogleg (tap the corner)"));
-    setBend.style.marginTop="8px";
-    setBend.onclick=()=>{ S.placingBend=!S.placingBend; if(ballMarker&&MAP){try{MAP.removeLayer(ballMarker);}catch(e){}ballMarker=null;} toast(S.placingBend?"Tap the corner of the dogleg on the map":"Dogleg placing cancelled"); render(); };
-    pinCard.appendChild(setBend);
-    if(hole.bend){
-      const clr=el("button","del","Remove dogleg (make it straight)");
-      clr.onclick=()=>{ removeBend(hole); };
-      pinCard.appendChild(clr);
+      <div class="mini muted" style="margin-bottom:12px">Stand on or beside this green and tap once — it saves for the <b>whole group</b>, once ever.</div>`;
+    const setpin=el("button","btn btn-gold","🎯 Tap here to set this green");
+    setpin.onclick=()=>setPinHere(hole);
+    pinCard.appendChild(setpin);
+    if(!hole.tee){
+      const setTee=el("button","btn btn-ghost","⛳ Set the tee box (stand on it)");
+      setTee.style.marginTop="8px";setTee.onclick=()=>setTeeHere(hole);
+      pinCard.appendChild(setTee);
     }
-  }
+  } else {
+    // CONFIGURED: one compact status row; setup tools behind a single disclosure
+    pinCard.style.borderColor="rgba(52,163,90,.4)";
+    const status=el("div","row between");status.style.alignItems="center";
+    status.innerHTML=`<span class="mini" style="color:var(--green-400);font-weight:700">✓ Green${hole.tee?' · ✓ Tee':''}${hole.bend?' · 📐 Dogleg':''}</span>`;
+    const adj=el("span","mini",`<span style="color:var(--gold);cursor:pointer">${S.holeSetup?'done ▴':'adjust ▾'}</span>`);
+    adj.onclick=()=>{S.holeSetup=!S.holeSetup;if(!S.holeSetup)S.placingBend=false;render();};
+    status.appendChild(adj);
+    pinCard.appendChild(status);
 
-  // once both tee and green are set, show how the hole plays (bent path if there's a dogleg)
-  if(hole.tee && hole.green && !hole.approx){
-    const straight=metresToYards(dist(hole.tee,hole.green));
-    const bent = hole.bend ? metresToYards(dist(hole.tee,hole.bend)+dist(hole.bend,hole.green)) : straight;
-    // direction off the tee: toward the corner if there's a dogleg, else toward the green
-    const aim = hole.bend || hole.green;
-    const brg=bearing(hole.tee,aim);
-    const compass=["N","NE","E","SE","S","SW","W","NW"][Math.round(brg/45)%8];
-    const tg=el("div","");tg.style.cssText="margin-top:12px;padding:10px 12px;background:rgba(217,169,78,.12);border-radius:12px";
-    tg.innerHTML=`<div class="mini muted" style="font-weight:700;text-transform:uppercase;letter-spacing:.1em">The hole plays</div>
-      <div class="row between" style="margin-top:4px"><span class="serif" style="font-size:22px;font-weight:900;color:var(--cream)">${bent} yds</span>
-      <span style="font-weight:700;color:var(--gold)">${hole.bend?'opens':'heading'} ${compass} (${Math.round(brg)}°)</span></div>
-      <div class="mini muted" style="margin-top:4px">${hole.bend?`Dogleg — measured tee → corner → green (${straight} yds straight).`:'Straight-line tee to green.'}</div>`;
-    pinCard.appendChild(tg);
+    if(S.holeSetup){
+      const tools=el("div","");tools.style.cssText="margin-top:10px";
+      const setpin=el("button","btn btn-ghost btn-sm","↻ Re-set this green");
+      setpin.style.width="100%";setpin.onclick=()=>setPinHere(hole);
+      tools.appendChild(setpin);
+      const setTee=el("button","btn btn-ghost btn-sm",hole.tee?"↻ Re-set the tee":"⛳ Set the tee box (stand on it)");
+      setTee.style.cssText="width:100%;margin-top:8px";setTee.onclick=()=>setTeeHere(hole);
+      tools.appendChild(setTee);
+      if(hole.tee){
+        const setBend=el("button",S.placingBend?"btn btn-gold btn-sm":"btn btn-ghost btn-sm",
+          S.placingBend?"👆 Now tap the corner on the map":(hole.bend?"↻ Move the dogleg point":"📐 Set the dogleg (tap the corner)"));
+        setBend.style.cssText="width:100%;margin-top:8px";
+        setBend.onclick=()=>{ S.placingBend=!S.placingBend; if(ballMarker&&MAP){try{MAP.removeLayer(ballMarker);}catch(e){}ballMarker=null;} toast(S.placingBend?"Tap the corner of the dogleg on the map":"Dogleg placing cancelled"); render(); };
+        tools.appendChild(setBend);
+        if(hole.bend){
+          const clr=el("button","del","Remove dogleg (make it straight)");
+          clr.onclick=()=>{ removeBend(hole); };
+          tools.appendChild(clr);
+        }
+      }
+      pinCard.appendChild(tools);
+    }
+
+    // how the hole plays (bent path if there's a dogleg) — the info that earns daily space
+    if(hole.tee){
+      const straight=metresToYards(dist(hole.tee,hole.green));
+      const bent = hole.bend ? metresToYards(dist(hole.tee,hole.bend)+dist(hole.bend,hole.green)) : straight;
+      const aim = hole.bend || hole.green;
+      const brg=bearing(hole.tee,aim);
+      const compass=["N","NE","E","SE","S","SW","W","NW"][Math.round(brg/45)%8];
+      const tg=el("div","");tg.style.cssText="margin-top:10px;padding:10px 12px;background:rgba(217,169,78,.12);border-radius:12px";
+      tg.innerHTML=`<div class="row between"><span class="serif" style="font-size:22px;font-weight:900;color:var(--cream)">${bent} yds</span>
+        <span style="font-weight:700;color:var(--gold)">${hole.bend?'opens':'heading'} ${compass}</span></div>
+      <div class="mini muted" style="margin-top:3px">${hole.bend?`Dogleg · tee → corner → green (${straight} straight)`:'Tee to green'}</div>`;
+      pinCard.appendChild(tg);
+    }
   }
   w.appendChild(pinCard);
 
-  const hint=el("div","card mini muted center",S.placingBend?"Tap the corner of the dogleg on the map to set where the hole bends.":"Tap anywhere on the map to measure a shot line from your position. Satellite view uses a free layer — no Google key needed.");
-  w.appendChild(hint);
+  // hint only when it teaches something new: first-run, or while placing a dogleg
+  if(S.placingBend || !configured){
+    const hint=el("div","card mini muted center",S.placingBend?"Tap the corner of the dogleg on the map to set where the hole bends.":"Tap anywhere on the map to measure a shot line from your position.");
+    w.appendChild(hint);
+  }
   return w;
 }
 
